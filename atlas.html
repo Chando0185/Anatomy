@@ -1,0 +1,1377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Anatomy Atlas AR</title>
+<script>
+/* three.js: local copy (python download_assets.py) if present, otherwise CDN */
+(function () {
+  var local = false;
+  try { var x = new XMLHttpRequest(); x.open('HEAD', './vendor/three/three.module.js', false); x.send(); local = x.status === 200; } catch (e) {}
+  var cdn = 'https://cdn.jsdelivr.net/npm/three@0.160.0/';
+  var map = { imports: local ? { 'three': './vendor/three/three.module.js' } : { 'three': cdn + 'build/three.module.js' } };
+  var s = document.createElement('script'); s.type = 'importmap'; s.textContent = JSON.stringify(map);
+  document.currentScript.after(s);
+  window.__THREE_SRC = local ? 'local' : 'CDN';
+})();
+</script>
+<style>
+/* ===== Clinical theme: light panels + dark "radiology" viewer ===== */
+:root{
+  --bg:#eef3f8;--panel:#ffffff;--panel2:#f5f8fc;--line:#dbe4ef;--line2:#c9d6e6;
+  --txt:#14233b;--mut:#5d6f8a;--acc:#0b72c9;--acc2:#0aa59a;--accbg:#e6f1fb;--accbd:#9cc6ee;
+  --ok:#14965a;--okbg:#e5f6ee;--bad:#d23b4c;--badbg:#fdeaec;--warn:#b7791f;--warnbg:#fff6e0;
+  --shadow:0 1px 2px rgba(16,40,80,.06),0 4px 14px rgba(16,40,80,.06);--r:12px;
+  --stage:#050a14;--focus:#f2b705;
+}
+:root[data-theme=dark]{
+  --bg:#070b14;--panel:#0e1524;--panel2:#121b2e;--line:#1f2b44;--line2:#2a3a5a;
+  --txt:#e3eaf8;--mut:#90a0bf;--acc:#5aa9ff;--acc2:#3fd0bf;--accbg:#13243f;--accbd:#2f5b95;
+  --ok:#47d38c;--okbg:#10301f;--bad:#ff7a8a;--badbg:#3a1820;--warn:#f2c14e;--warnbg:#33290f;--shadow:0 1px 2px rgba(0,0,0,.3)
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:"Segoe UI",Inter,system-ui,-apple-system,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,.row:focus-visible,a:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+#app{display:grid;grid-template-columns:360px 1fr;grid-template-rows:auto 1fr;height:100vh}
+/* top bar */
+#top{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--line);box-shadow:var(--shadow);z-index:2}
+.brand{display:flex;align-items:center;gap:10px}
+.brand .logo{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;flex:none}
+.brand b{display:block;font-size:16px;font-weight:700;letter-spacing:.1px}
+.brand small{display:block;color:var(--mut);font-size:12px}
+#top nav{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#top nav a,.ghost{color:var(--txt);text-decoration:none;font-size:12.5px;border:1px solid var(--line);background:var(--panel2);padding:6px 11px;border-radius:999px;display:inline-flex;gap:6px;align-items:center}
+#top nav a:hover,.ghost:hover{border-color:var(--accbd);color:var(--acc)}
+.disc{font-size:11.5px;color:var(--mut);border:1px dashed var(--line2);border-radius:999px;padding:4px 10px}
+/* sidebar */
+#side{display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--panel);min-height:0}
+.sbh{padding:12px 14px 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);font-weight:700;display:flex;align-items:center;gap:8px}
+.sbh em{margin-left:auto;font-style:normal;text-transform:none;letter-spacing:0;font-weight:500}
+.search{position:relative;margin:4px 14px 2px}
+.search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--mut)}
+#q{padding:9px 12px 9px 34px;border-radius:10px;border:1px solid var(--line2);background:var(--panel2);width:100%}
+#q:focus{border-color:var(--acc);background:var(--panel);outline:none;box-shadow:0 0 0 3px var(--accbg)}
+#quick{display:flex;flex-wrap:wrap;gap:6px;padding:4px 14px 8px;max-height:132px;overflow:auto}
+.chip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12px;color:var(--txt)}
+.chip:hover{border-color:var(--accbd)}
+.chip.on{background:var(--accbg);border-color:var(--acc);color:var(--acc);font-weight:600}
+#tree{flex:1;overflow:auto;padding:2px 10px 10px;min-height:0}
+details.sys{margin:5px 0;border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden;border-left:4px solid var(--sc,#999)}
+details.sys[open]{box-shadow:var(--shadow)}
+details.sys>summary{padding:9px 10px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:650;list-style:none}
+details.sys>summary::-webkit-details-marker,details.grp>summary::-webkit-details-marker{display:none}
+details.sys>summary:before,details.grp>summary:before{content:"›";display:inline-block;width:10px;color:var(--mut);transition:transform .15s;font-weight:700}
+details[open]>summary:before{transform:rotate(90deg)}
+summary i{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none;box-shadow:0 0 0 2px var(--panel),0 0 0 3px var(--line2)}
+summary em{margin-left:auto;font-style:normal;color:var(--mut);font-size:11.5px;font-weight:500;background:var(--panel2);border:1px solid var(--line);padding:0 7px;border-radius:999px}
+details.grp{margin:0 8px 4px;border-top:1px solid var(--line)}
+details.grp>summary{padding:7px 4px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--mut);font-weight:600;list-style:none}
+.mini{margin-left:auto;background:var(--panel);border:1px solid var(--line);border-radius:6px;font-size:11px;padding:1px 8px;color:var(--mut)}
+summary em+.mini{margin-left:6px}
+.mini:hover{color:var(--acc);border-color:var(--accbd)}
+.row{display:flex;align-items:center;gap:9px;padding:6px 8px;margin:1px 0;border-radius:8px;cursor:pointer;font-size:13px}
+.row:hover{background:var(--panel2)}
+.row .ck{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--line2);flex:none;display:grid;place-items:center;background:var(--panel)}
+.row.on{background:var(--accbg)}
+.row.on .ck{background:var(--acc);border-color:var(--acc)}
+.row.on .ck:after{content:"";width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg) translate(-1px,-1px)}
+.row.focus{box-shadow:inset 0 0 0 1.5px var(--focus)}
+.row small{color:var(--mut);margin-left:auto;font-size:10.5px;white-space:nowrap;border:1px solid var(--line);border-radius:5px;padding:0 5px}
+.row small+small{margin-left:4px}
+.row.info .ck{border-style:dashed;background:transparent}
+.ft{display:flex;gap:6px;align-items:center;padding:10px 12px;border-top:1px solid var(--line);background:var(--panel2)}
+.ft span{color:var(--mut);margin-right:auto;font-weight:600}
+.btn2{background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:6px 11px;font-size:12.5px}
+.btn2:hover{border-color:var(--acc);color:var(--acc)}
+/* main */
+#main{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:auto;padding:14px 16px 18px;gap:12px}
+#bar{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;box-shadow:var(--shadow)}
+.grpc{display:flex;flex-direction:column;gap:4px}
+.grpc>span{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);font-weight:700;padding-left:2px}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden;background:var(--panel2)}
+.seg button{background:transparent;border:0;padding:6px 12px;border-right:1px solid var(--line);font-size:13px;color:var(--txt)}
+.seg button:last-child{border-right:0}
+.seg button:hover{color:var(--acc)}
+.seg button.on{background:var(--acc);color:#fff;font-weight:600}
+.seg button:disabled{opacity:.4;cursor:not-allowed}
+.toggles{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin-left:auto}
+#bar label{display:flex;align-items:center;gap:6px;color:var(--txt);font-size:12.5px}
+#bar input[type=checkbox]{appearance:none;width:30px;height:17px;border-radius:999px;background:var(--line2);position:relative;cursor:pointer;transition:background .15s;margin:0}
+#bar input[type=checkbox]:after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+#bar input[type=checkbox]:checked{background:var(--acc2)}
+#bar input[type=checkbox]:checked:after{left:15px}
+#bar input[type=range]{width:90px;accent-color:var(--acc)}
+#bar select{background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:4px 6px}
+#stage{position:relative;width:100%;aspect-ratio:16/9;background:var(--stage);border-radius:14px;overflow:hidden;border:1px solid #0d1830;flex:none;touch-action:none;box-shadow:0 10px 30px rgba(8,22,48,.25)}
+#stage canvas,#stage video{position:absolute;inset:0;width:100%;height:100%;display:block}
+#video{display:none}
+#gl{filter:drop-shadow(0 0 5px rgba(110,170,255,.45))}
+#status{position:absolute;left:12px;top:10px;font-size:12px;color:#cfe0ff;background:rgba(5,12,28,.7);border:1px solid rgba(120,160,230,.25);padding:4px 11px;border-radius:999px;pointer-events:none;z-index:4;backdrop-filter:blur(4px)}
+.vtag{position:absolute;right:12px;top:10px;z-index:4;pointer-events:none;font-size:11px;color:#9fb6dd;background:rgba(5,12,28,.6);border:1px solid rgba(120,160,230,.2);border-radius:6px;padding:3px 8px;letter-spacing:.04em}
+#overlay{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;text-align:center;padding:24px;color:#e6eeff;background:radial-gradient(circle at 50% 35%,#123060 0%,#071226 55%,#040810 100%)}
+#overlay h2{margin:0;font-size:26px;font-weight:700}#overlay p{margin:0;color:#a9bbdc;max-width:640px;line-height:1.55}
+#overlay .feat{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:720px}
+#overlay .feat span{font-size:12px;border:1px solid rgba(150,190,255,.25);background:rgba(255,255,255,.04);border-radius:999px;padding:4px 10px;color:#cfe0ff}
+.btn{background:linear-gradient(135deg,#1683e0,#14b3a3);color:#fff;border:0;border-radius:999px;padding:11px 24px;font-weight:700;box-shadow:0 6px 18px rgba(20,140,200,.35)}
+.btn:hover{filter:brightness(1.07)}
+.btn.alt{background:rgba(255,255,255,.08);color:#e6eeff;border:1px solid rgba(160,190,240,.35);box-shadow:none}
+.btn:disabled{opacity:.6;cursor:wait}
+#legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--mut);padding:0 4px;min-height:18px}
+#legend span{display:inline-flex;align-items:center;gap:6px}
+#legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.cards{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:12px;align-items:start}
+.card{border:1px solid var(--line);background:var(--panel);border-radius:var(--r);padding:14px 16px;box-shadow:var(--shadow)}
+#quiz{border:1px solid var(--accbd);background:var(--panel);border-radius:var(--r);padding:12px 16px;box-shadow:var(--shadow)}
+#quiz[hidden]{display:none}
+#quiz .q{font-weight:700;margin-bottom:10px;font-size:15px}
+#quiz .opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+#quiz .opts button{background:var(--panel2);border:1px solid var(--line2);border-radius:10px;padding:9px 11px;text-align:left}
+#quiz .opts button:hover{border-color:var(--acc)}
+#quiz .opts button.ok{background:var(--okbg);border-color:var(--ok);color:var(--ok);font-weight:600}#quiz .opts button.no{background:var(--badbg);border-color:var(--bad);color:var(--bad)}
+#quiz .meta{display:flex;gap:10px;align-items:center;margin-top:10px;color:var(--mut);font-size:13px;flex-wrap:wrap}
+#quiz .fb{min-height:1.3em;font-weight:600}
+#info{line-height:1.6}
+#info .ih{display:flex;align-items:flex-start;gap:12px}
+#info .sw{width:12px;align-self:stretch;border-radius:6px;flex:none}
+#info h3{margin:0;font-size:18px;font-weight:700}
+#info .lat{color:var(--acc);font-style:italic;font-size:13px}
+#info .path{color:var(--mut);font-size:12px;margin-top:2px}
+#info .tag{display:inline-block;font-size:11px;border:1px solid var(--line2);border-radius:6px;padding:1px 7px;margin-left:8px;color:var(--mut);vertical-align:middle;font-weight:500}
+#info .body{margin-top:10px}
+#info .pearl{margin-top:10px;border-left:3px solid var(--acc2);background:var(--panel2);padding:8px 12px;border-radius:0 8px 8px 0}
+#info .pearl b{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--acc2);margin-bottom:2px}
+#info .mn{margin-top:10px;border:1px solid #f0d58a;background:var(--warnbg);color:var(--txt);padding:8px 12px;border-radius:8px}
+#info .mn b{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--warn);margin-bottom:2px}
+#info .acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+#info .rel{margin-top:12px}
+#info .rel>span{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);font-weight:700}
+#info .rel div{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+#info ul{margin:8px 0 0;padding-left:18px}
+.side2 h4{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}
+.side2 ol{margin:0;padding-left:18px;line-height:1.7;font-size:13px}
+.side2 kbd{font-family:inherit;font-size:11px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;padding:0 5px;background:var(--panel2)}
+details.fit{color:var(--txt)}details.fit summary{cursor:pointer;font-weight:600}
+.fitrow{display:flex;gap:14px;flex-wrap:wrap;padding:10px 0 2px}
+.fitrow label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mut)}
+.fitrow input[type=range]{accent-color:var(--acc)}
+footer{color:var(--mut);font-size:12px;line-height:1.55}
+@media (max-width:1100px){.cards{grid-template-columns:1fr}}
+@media (max-width:900px){#app{grid-template-columns:1fr;height:auto}#side{max-height:60vh}.toggles{margin-left:0}#top .disc{display:none}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <div class="brand"><div class="logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg></div><div><b>Anatomy Atlas AR</b><small>Clinical anatomy study companion</small></div></div>
+    <nav>
+      <span class="disc">Educational schematic · not for diagnosis</span>
+      <a href="index.html">2D X-ray mirror</a><a href="3d.html">3D X-ray mirror</a>
+      <button class="ghost" id="themeBtn" type="button" aria-label="Toggle light or dark theme">◐ Theme</button>
+    </nav>
+  </header>
+  <aside id="side">
+    <div class="sbh">Structures<em id="catCount"></em></div>
+    <div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Search structure, nerve, sign… (press /)" autocomplete="off" aria-label="Search structures"></div>
+    <div class="sbh">Quick sets</div>
+    <div id="quick"></div>
+    <div class="sbh">Body systems</div>
+    <div id="tree" role="tree"></div>
+    <div class="ft"><span id="selCount">0 selected</span><button class="btn2" id="selResults" type="button">Select results</button><button class="btn2" id="clearSel" type="button">Clear</button></div>
+  </aside>
+
+  <section id="main">
+    <div id="bar">
+      <div class="grpc"><span>Source</span><div class="seg" id="srcSeg" role="group" aria-label="Source"><button data-v="cam" class="on" type="button">Camera</button><button data-v="man" type="button">Mannequin</button></div></div>
+      <div class="grpc"><span>View</span><div class="seg" id="viewSeg" role="group" aria-label="View"><button data-v="2d" class="on" type="button">2D</button><button data-v="3d" type="button" id="b3d">3D</button></div></div>
+      <div class="grpc"><span>Learn</span><div class="seg" id="modeSeg" role="group" aria-label="Mode"><button data-v="study" class="on" type="button">Study</button><button data-v="recall" type="button">Recall</button><button data-v="quiz" type="button">Quiz</button></div></div>
+      <div class="grpc"><span>Render style</span><div class="seg" id="styleSeg" role="group" aria-label="Style"><button data-v="real" class="on" type="button" title="Shaded, realistic 3D look">3D Real</button><button data-v="xray" type="button">X-ray</button><button data-v="mesh" type="button">Mesh</button><button data-v="wire" type="button">Wire</button></div></div>
+      <div class="toggles">
+        <label><input type="checkbox" id="cLabels" checked>Labels</label>
+        <label>Max <select id="cap"><option value="12">12</option><option value="24">24</option><option value="40">40</option><option value="80">80</option><option value="9999" selected>All</option></select></label>
+        <label>Opacity <input type="range" id="opa" min="25" max="100" value="100"></label>
+        <label><input type="checkbox" id="cBeat" checked>Heartbeat</label>
+        <label><input type="checkbox" id="cSil" checked>Silhouette</label>
+        <label><input type="checkbox" id="cTrack">Tracking</label>
+      </div>
+    </div>
+
+    <div id="stage">
+      <video id="video" playsinline muted></video>
+      <canvas id="bg"></canvas><canvas id="gl"></canvas><canvas id="ov"></canvas>
+      <div id="status">Idle</div><div class="vtag">SCHEMATIC OVERLAY · EDUCATIONAL</div>
+      <div id="overlay">
+        <h2>Anatomy Atlas AR</h2>
+        <p>Select any structure in the list — skull bones, vertebrae, ribs, hand and foot bones, muscles, vessels, nerves, brain regions, the heart (chambers, valves, coronaries, conduction) and kidney (cortex, pyramids, calyces, nephron) — and see it tracked on your body. Use the camera, or the rotatable mannequin if you have no webcam.</p>
+        <div class="feat"><span>Skeleton &amp; joints</span><span>Muscles</span><span>Heart &amp; coronaries</span><span>Kidney &amp; nephron</span><span>Brain &amp; nerves</span><span>Vessels &amp; lymph</span><span>ECG leads</span><span>Procedures</span><span>Surface landmarks</span></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center"><button class="btn" id="startBtn" type="button">Start camera</button><button class="btn alt" id="manBtn" type="button">Use mannequin (no camera)</button></div>
+        <p id="err" style="color:#ff8a8a"></p>
+      </div>
+    </div>
+
+    <div id="legend" aria-label="Colour key"></div>
+    <div id="quiz" hidden></div>
+    <div class="cards">
+      <div id="info" class="card"><div class="ih"><div class="sw" style="background:linear-gradient(var(--acc),var(--acc2))"></div><div><h3>Welcome</h3><div class="path">Select structures on the left, then tap a label on the body.</div></div></div>
+        <div class="body">Each structure card shows its <b>Latin name</b>, location in the body systems, key anatomy, a <b>clinical pearl</b> and a <b>memory aid</b> where available. Use <b>Recall</b> to hide names and test yourself, or <b>Quiz</b> to identify and locate structures.</div></div>
+      <div class="card side2"><h4>How to study</h4><ol>
+        <li>Pick a <b>quick set</b> (e.g. Heart detail, ECG leads).</li>
+        <li>Stand back so your whole body is in view, or use the <b>mannequin</b>.</li>
+        <li>Tap any label to read the card; <b>Recall</b> → tap “#n · ?” to reveal.</li>
+        <li>Finish with <b>Quiz</b> → Identify, then Locate.</li></ol>
+        <p style="margin:10px 0 0;color:var(--mut);font-size:12px">Shortcuts: <kbd>/</kbd> search · <kbd>Esc</kbd> clear</p></div>
+    </div>
+
+    <details class="fit card"><summary>Fit overlay to my body / mannequin view</summary>
+      <div class="fitrow">
+        <label>Head size <input type="range" id="fHead" min="70" max="140" value="100"></label>
+        <label>Body width <input type="range" id="fW" min="70" max="140" value="100"></label>
+        <label>Body length <input type="range" id="fL" min="70" max="140" value="100"></label>
+        <label>Mannequin zoom <input type="range" id="fZoom" min="60" max="220" value="100"></label>
+        <label>Mannequin turn <input type="range" id="fYaw" min="-180" max="180" value="0"></label>
+        <button class="btn2" id="fReset" type="button">Reset</button>
+      </div>
+    </details>
+    <footer>Tracking: MediaPipe Pose/Face/Hand Landmarkers (on-device); video never leaves this computer. Overlay positions are schematic approximations fitted to landmarks — an educational aid, not a medical image. Heart and kidney sections are drawn as magnified insets that follow your body.</footer>
+  </section>
+</div>
+
+<script type="module">
+let THREE = null;
+try { THREE = await import('three'); } catch (e) { console.warn('three.js unavailable – 3D disabled', e); }
+
+//#CORE-START
+/* =====================================================================
+   CORE: math, frames, spec helpers, catalog
+   ===================================================================== */
+const TAU = Math.PI * 2;
+const V = {
+  add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]],
+  sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+  mul: (a, k) => [a[0] * k, a[1] * k, a[2] * k],
+  lerp: (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t],
+  len: a => Math.hypot(a[0], a[1], a[2]),
+  dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+  cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+  norm: a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; },
+  mid: (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]
+};
+/* frame: local (x,y,z) -> world. world: x right px, y DOWN px, z toward viewer px. Local z = anterior. */
+function mkFrame(O, X, Y) {
+  const sc = V.len(X) || 1; let Z = V.cross(X, Y); const l = V.len(Z);
+  Z = l > 1e-6 ? V.mul(Z, sc / l) : [0, 0, sc];
+  return { O, X, Y, Z, sc };
+}
+const L2W = (f, p) => [f.O[0] + f.X[0] * p[0] + f.Y[0] * p[1] + f.Z[0] * p[2], f.O[1] + f.X[1] * p[0] + f.Y[1] * p[1] + f.Z[1] * p[2], f.O[2] + f.X[2] * p[0] + f.Y[2] * p[1] + f.Z[2] * p[2]];
+const JAW_PIV = [0, 0.55, -0.25];
+function jawRot(q, a) { const dy = q[1] - JAW_PIV[1], dz = q[2] - JAW_PIV[2], c = Math.cos(a), s = Math.sin(a); return [q[0], JAW_PIV[1] + dy * c + dz * s, JAW_PIV[2] + dz * c - dy * s]; }
+
+const CUR = { p: null, pv: [], hands: [], hc: null, unit: 1, U: 0, mid: null, fr: {}, jaw: 0, cx: null, face: null };
+
+/* ---- primitives (local frames) ---- */
+const pad = a => [a[0], a[1], a[2] || 0];
+const E = (c, r, o = {}) => ({ k: 'e', c: pad(c), r: r.length === 2 ? [r[0], r[1], r[0] * 0.7] : r, ...o });
+const TB = (p, r, o = {}) => ({ k: 't', p: p.map(pad), r, ...o });
+const FL = (p, d = 0.05, o = {}) => ({ k: 'f', p: p.map(pad), d, ...o });
+/* ---- primitives (landmark based; coordinates are spec functions) ---- */
+const BN = (a, b, w, o = {}) => ({ k: 's', a, b, w, ...o });   // bone
+const MU = (a, b, w, o = {}) => ({ k: 'm', a, b, w, ...o });   // fusiform muscle
+const VS = (p, w, o = {}) => ({ k: 'v', p, w, ...o });         // vessel / nerve chain
+const BL = (c, w, o = {}) => ({ k: 'o', c, w, ...o });         // ball / joint
+const pp = i => () => (CUR.p && CUR.pv[i] > 0.5 ? CUR.p[i] : null);
+const hh = i => () => (CUR.hc ? CUR.hc[i] : null);
+const lp = (a, b, t) => () => { const A = a(), B = b(); return A && B ? V.lerp(A, B, t) : null; };
+/* point at fraction t along a->b, shifted k units sideways (k>0 = toward the body midline) */
+const lb = (a, b, t, k) => () => {
+  const A = a(), B = b(); if (!A || !B) return null;
+  const P = V.lerp(A, B, t); if (!k) return P;
+  const d = V.sub(B, A); let n = [-d[1], d[0], 0]; const l = Math.hypot(n[0], n[1]) || 1; n = [n[0] / l, n[1] / l, 0];
+  if (CUR.mid && V.dot(n, V.sub(CUR.mid, A)) < 0) n = [-n[0], -n[1], 0];
+  const u = CUR.unit * k; return [P[0] + n[0] * u, P[1] + n[1] * u, P[2]];
+};
+const LS = [[11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31], [12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32]];
+const NM = ['sh', 'el', 'wr', 'pk', 'ix', 'th', 'hp', 'kn', 'an', 'he', 'to'];
+const both = fn => LS.flatMap(ix => { const o = {}; NM.forEach((n, i) => o[n] = pp(ix[i])); return fn(o); });
+const pair = fn => [1, -1].map(fn);
+
+/* ---- catalog ---- */
+const SYSCOL = { 'Skeletal': '#dce9ff', 'Joints': '#8fd0ff', 'Muscular': '#ff5a6e', 'Cardiovascular': '#ff4a58', 'Respiratory': '#ffa8c0', 'Digestive': '#f2a36b', 'Urinary': '#c279e0', 'Nervous': '#ffd24a', 'Endocrine': '#78e08a', 'Lymphatic': '#62e0cf', 'Reproductive': '#ff8fcf', 'Special senses': '#ffe08a', 'Integumentary': '#e8b59a', 'Clinical landmarks': '#ffffff' };
+const ART = '#ff4a58', VEN = '#5b86ff', NRV = '#ffd24a', GOLD = '#ffd36e';
+const INS = { HEART: { at: [2.7, 0.15], sc: 1.15, tr: [0.16, 0.34] }, KID: { at: [2.7, 1.12], sc: 1.0, tr: [0.36, 0.67] }, NEPH: { at: [-2.8, 0.7], sc: 1.0, tr: [-0.36, 0.67] } };
+const hex2rgb = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const CAT = [];
+function def(sys, grp, name, fr, prims, info, o = {}) {
+  const s = { id: CAT.length, sys, grp, name, fr, prims, i: info, lat: o.lat || '', mn: o.mn || '', col: o.col || SYSCOL[sys], lab: o.lab || 0, ins: fr && INS[fr] ? fr : null };
+  s.rgb = hex2rgb(s.col); CAT.push(s); return s;
+}
+const note = (sys, grp, name, info, o) => def(sys, grp, name, null, [], info, o);
+const R = n => ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][n];
+
+/* ============ SKELETAL ============ */
+const SK = 'Skeletal', GC = 'Skull · Cranial bones', GF = 'Skull · Facial bones';
+def(SK, GC, 'Frontal bone', 'H', [E([0, -1.1, 0.3], [0.92, 0.85, 0.55])], 'Forehead and roof of the orbits; houses the frontal sinuses. Meets the parietals at the coronal suture.', { lat: 'Os frontale', mn: 'Cranial bones – “PEST OF 6”: Parietal ×2, Ethmoid, Sphenoid, Temporal ×2, Occipital, Frontal (8 total).' });
+def(SK, GC, 'Parietal bones (×2)', 'H', pair(s => E([s * 0.55, -1.6, -0.45], [0.55, 0.6, 0.85])), 'Form most of the roof and sides of the cranium. Sagittal suture between them; lambdoid suture with the occipital; squamous suture with the temporal.', { lat: 'Ossa parietalia' });
+def(SK, GC, 'Occipital bone', 'H', [E([0, -0.5, -1.4], [0.75, 0.65, 0.45])], 'Posterior and inferior cranium. Foramen magnum transmits the spinal cord; occipital condyles articulate with the atlas (C1).', { lat: 'Os occipitale' });
+def(SK, GC, 'Temporal bones (×2)', 'H', pair(s => E([s * 0.98, -0.05, -0.3], [0.22, 0.42, 0.55])), 'Squamous, petrous, tympanic and mastoid parts. Houses the middle and inner ear; mandibular fossa for the TMJ; styloid process. Pterion = weak point over the middle meningeal artery.', { lat: 'Ossa temporalia' });
+def(SK, GC, 'Sphenoid bone', 'H', [E([0, 0.15, 0.0], [0.8, 0.14, 0.32])], 'Butterfly-shaped keystone of the skull base. Sella turcica holds the pituitary; optic canals, superior orbital fissure, foramen rotundum/ovale/spinosum.', { lat: 'Os sphenoidale' });
+def(SK, GC, 'Ethmoid bone', 'H', [E([0, 0.35, 0.55], [0.14, 0.22, 0.15])], 'Between the orbits. Cribriform plate (olfactory nerve fibres), crista galli, perpendicular plate, superior/middle conchae, ethmoid air cells.', { lat: 'Os ethmoidale' });
+def(SK, GF, 'Nasal bones (×2)', 'H', pair(s => E([s * 0.1, 0.3, 0.9], [0.09, 0.33, 0.1])), 'Form the bridge of the nose. Most commonly fractured facial bones.', { lat: 'Ossa nasalia', mn: 'Facial bones (14) – “Virgil Can Not Make My Pet Zebra Laugh”: Vomer, Conchae (inferior), Nasal, Maxilla, Mandible, Palatine, Zygomatic, Lacrimal.' });
+def(SK, GF, 'Lacrimal bones (×2)', 'H', pair(s => E([s * 0.4, 0.25, 0.7], [0.06, 0.1, 0.05])), 'Smallest, most fragile facial bones; medial orbital wall; fossa for the lacrimal sac and nasolacrimal duct.', { lat: 'Ossa lacrimalia' });
+def(SK, GF, 'Zygomatic bones (×2)', 'H', pair(s => E([s * 0.85, 0.55, 0.35], [0.25, 0.18, 0.25])), 'Cheekbones. Lateral orbital margin; form the zygomatic arch with the temporal bone. Tripod fracture is common.', { lat: 'Ossa zygomatica' });
+def(SK, GF, 'Maxillae (×2)', 'H', pair(s => E([s * 0.32, 0.95, 0.55], [0.38, 0.33, 0.32])), 'Upper jaw; hold the upper teeth; contain the maxillary sinus; form the hard palate (palatine process), floor of the orbit and sides of the nasal aperture.', { lat: 'Maxillae' });
+def(SK, GF, 'Palatine bones (×2)', 'H', pair(s => E([s * 0.15, 1.1, 0.2], [0.15, 0.07, 0.25])), 'Posterior hard palate and part of the nasal cavity floor and lateral wall.', { lat: 'Ossa palatina' });
+def(SK, GF, 'Inferior nasal conchae (×2)', 'H', pair(s => E([s * 0.18, 0.85, 0.55], [0.1, 0.06, 0.2])), 'Separate facial bones on the lateral nasal wall that increase mucosal surface to warm and humidify air.', { lat: 'Conchae nasales inferiores' });
+def(SK, GF, 'Vomer', 'H', [TB([[0, 0.55, 0.3], [0, 0.8, 0.35], [0, 1.0, 0.3]], 0.04)], 'Forms the inferior-posterior part of the nasal septum with the ethmoid’s perpendicular plate.', { lat: 'Vomer' });
+def(SK, GF, 'Mandible', 'H', [TB([[-0.92, 0.5, -0.25], [-0.9, 1.25, -0.15], [-0.55, 1.7, 0.4], [-0.15, 1.85, 0.62], [0.15, 1.85, 0.62], [0.55, 1.7, 0.4], [0.9, 1.25, -0.15], [0.92, 0.5, -0.25]], 0.075, { j: 1 })], 'The only mobile skull bone: body, angle, ramus, coronoid and condylar processes. Opens with your mouth in the live view. Mental foramen (CN V3), mandibular foramen (inferior alveolar n.).', { lat: 'Mandibula' });
+def(SK, GF, 'Teeth', 'H', [TB([[-0.4, 1.1, 0.5], [-0.2, 1.14, 0.8], [0.2, 1.14, 0.8], [0.4, 1.1, 0.5]], 0.055), TB([[-0.4, 1.28, 0.5], [-0.2, 1.3, 0.78], [0.2, 1.3, 0.78], [0.4, 1.28, 0.5]], 0.055, { j: 1 })], 'Adult dentition = 32: per quadrant 2 incisors, 1 canine, 2 premolars, 3 molars (2-1-2-3). Deciduous = 20 (no premolars). Parts: crown, neck, root; enamel, dentin, pulp, cementum.', { lat: 'Dentes' });
+def(SK, 'Neck', 'Hyoid bone', 'H', [TB([[-0.38, 2.25, 0.1], [0, 2.38, 0.35], [0.38, 2.25, 0.1]], 0.05)], 'U-shaped, floating bone (no bony articulation) that anchors the tongue and suprahyoid/infrahyoid muscles. Level of C3. Fractured in strangulation.', { lat: 'Os hyoideum' });
+note(SK, 'Skull · Ear ossicles', 'Malleus (hammer)', 'Attached to the tympanic membrane; articulates with the incus. Tensor tympani inserts here.', { lat: 'Malleus', mn: 'Ossicles lateral → medial: Malleus, Incus, Stapes (“MIS”). Stapes is the smallest bone in the body.' });
+note(SK, 'Skull · Ear ossicles', 'Incus (anvil)', 'Middle ossicle linking malleus to stapes.', { lat: 'Incus' });
+note(SK, 'Skull · Ear ossicles', 'Stapes (stirrup)', 'Footplate sits in the oval window; stapedius attaches. Smallest bone in the body.', { lat: 'Stapes' });
+
+const GS = 'Spine · Vertebrae';
+const vert = (y, z, w, h) => [E([0, y, z], [w, h, 0.06]), TB([[0, y, z - 0.04], [0, y + 0.01, z - 0.2]], 0.014), TB([[-w * 1.8, y, z - 0.03], [w * 1.8, y, z - 0.03]], 0.012)];
+const cervInfo = ['Atlas: ring with no body; carries the skull; nodding (yes) at the atlanto-occipital joint.', 'Axis: dens (odontoid process) is the pivot for head rotation (no) at the atlanto-axial joint.', 'Typical cervical: bifid spinous process, foramen transversarium (vertebral artery), small body.', 'Typical cervical vertebra; carotid tubercle (C6) nearby.', 'Typical cervical vertebra.', 'Carotid (Chassaignac) tubercle – compress the carotid here; cricoid cartilage level.', 'Vertebra prominens: long non-bifid spinous process, palpable at the base of the neck.'];
+['C1 (Atlas)', 'C2 (Axis)', 'C3', 'C4', 'C5', 'C6', 'C7 (Vertebra prominens)'].forEach((n, i) => def(SK, 'Spine · Cervical (C1–C7)', 'Vertebra ' + n, 'T', vert(-0.42 + i * 0.063, -0.28 - 0.02 * i, 0.06, 0.025), cervInfo[i], { lat: 'Vertebrae cervicales', mn: i === 0 ? 'Cervical 7, Thoracic 12, Lumbar 5 – eat at 7, lunch at 12, dinner at 5.' : '' }));
+for (let i = 0; i < 12; i++) def(SK, 'Spine · Thoracic (T1–T12)', 'Vertebra T' + (i + 1), 'T', vert(0.0 + i * 0.05, -0.42 - 0.04 * Math.sin(i / 12 * Math.PI), 0.075 + i * 0.002, 0.03), (i < 10 ? 'Costal facets for rib head (rib ' + (i + 1) + ') and transverse costal facet (T1–T10); heart-shaped body; long inferiorly-sloping spinous process. ' : 'Single full costal facet; no transverse costal facet. ') + ({ 0: 'T1 has a full facet for rib 1.', 3: 'T4–T5 level = sternal angle / carina / aortic arch.', 9: 'T10 – esophageal hiatus is at T10.', 7: 'T8 – IVC passes through the diaphragm.', 11: 'T12 – aortic hiatus; thoracolumbar junction (common fracture site).' }[i] || ''), { lat: 'Vertebrae thoracicae' });
+for (let i = 0; i < 5; i++) def(SK, 'Spine · Lumbar (L1–L5)', 'Vertebra L' + (i + 1), 'T', vert(0.6 + i * 0.075, -0.38 + i * 0.01, 0.11, 0.034), 'Massive body, no costal facets or foramen transversarium; short blunt spinous process. ' + ({ 0: 'L1–L2: spinal cord ends (conus medullaris) in adults.', 3: 'L4: iliac crest level – landmark for lumbar puncture (L3–L4 / L4–L5).', 4: 'L5: most mobile; spondylolisthesis on S1; lumbosacral angle.' }[i] || ''), { lat: 'Vertebrae lumbales' });
+def(SK, 'Spine · Sacrum & coccyx', 'Sacrum', 'T', [E([0, 1.03, -0.36], [0.14, 0.13, 0.07])], 'Five fused vertebrae (S1–S5); sacral promontory, four pairs of sacral foramina (S1–S4 rami), sacral hiatus; articulates with the ilia at the sacro-iliac joints.', { lat: 'Os sacrum' });
+def(SK, 'Spine · Sacrum & coccyx', 'Coccyx', 'T', [E([0, 1.2, -0.3], [0.03, 0.05, 0.03])], 'Tailbone: 3–5 fused vertebrae; attachment of levator ani and gluteus maximus fibres.', { lat: 'Os coccygis' });
+
+const ribPts = (i, s) => {
+  const ys = 0.02 + i * 0.043, w = 0.42 + 0.42 * Math.sin(Math.min(1, (i + 1) / 8) * Math.PI / 2) - (i > 8 ? (i - 8) * 0.04 : 0);
+  const pts = [[s * 0.09, ys, -0.42], [s * w * 0.6, ys - 0.03, -0.35], [s * w, ys + 0.05, -0.05], [s * w * 0.85, ys + 0.12, 0.3]];
+  if (i < 7) pts.push([s * 0.07, 0.09 + i * 0.05, 0.5]); else if (i < 10) pts.push([s * (0.2 + (i - 7) * 0.12), 0.4 + (i - 7) * 0.02, 0.45]);
+  return pts;
+};
+const ribInfo = ['Shortest, broadest, most curved; grooves for subclavian vessels; scalene tubercle (anterior scalene). Articulates with T1 only.', 'Meets the sternum at the sternal angle (manubriosternal joint) – landmark for counting ribs.', 'Typical true rib.', 'Typical true rib. Nipple level in men (4th ICS).', 'Typical true rib.', 'Typical true rib.', 'Last true rib (attaches directly to sternum).', 'First false rib: cartilage joins the cartilage above (costal margin).', 'False rib – via costal margin.', 'False rib – lowest to join the costal margin.', 'Floating rib: no anterior attachment; ends in abdominal wall muscle.', 'Floating rib; just below the kidney’s posterior surface.'];
+for (let i = 0; i < 12; i++) def(SK, i < 7 ? 'Thorax · True ribs (1–7)' : i < 10 ? 'Thorax · False ribs (8–10)' : 'Thorax · Floating ribs (11–12)', 'Rib ' + (i + 1) + (i === 0 ? ' (first)' : ''), 'T', pair(s => TB(ribPts(i, s), 0.028)), ribInfo[i] + ' Neurovascular bundle runs in the costal groove along the inferior border (VAN: Vein, Artery, Nerve top→bottom).', { lat: 'Costae', mn: i === 0 ? '7 true, 3 false, 2 floating ribs per side (24 total).' : '' });
+def(SK, 'Thorax · Sternum', 'Manubrium', 'T', [E([0, 0.05, 0.5], [0.11, 0.05, 0.04])], 'Superior part of the sternum; jugular (suprasternal) notch at T2–T3; clavicular notches and 1st costal cartilage; sternal angle at its junction with the body (T4–T5).', { lat: 'Manubrium sterni' });
+def(SK, 'Thorax · Sternum', 'Sternal body', 'T', [E([0, 0.27, 0.52], [0.07, 0.17, 0.03])], 'Middle part (T5–T9); costal notches for ribs 2–7. Overlies the heart; site for chest compressions (lower half).', { lat: 'Corpus sterni' });
+def(SK, 'Thorax · Sternum', 'Xiphoid process', 'T', [E([0, 0.47, 0.5], [0.03, 0.04, 0.02])], 'Cartilaginous at birth, ossifies with age (T9). Attachment of rectus abdominis and diaphragm; avoid pressing during CPR.', { lat: 'Processus xiphoideus' });
+def(SK, 'Shoulder girdle', 'Clavicles (×2)', 'T', pair(s => TB([[s * 0.08, 0.0, 0.4], [s * 0.4, -0.04, 0.3], [s * 0.7, 0.0, 0.05], [s * 0.95, -0.03, -0.12]], 0.035)), 'S-shaped strut between sternum and acromion; the most frequently fractured bone (middle third). Ossifies intramembranously, first to ossify.', { lat: 'Claviculae' });
+def(SK, 'Shoulder girdle', 'Scapulae (×2)', 'T', pair(s => FL([[s * 0.95, -0.03], [s * 0.62, 0.0], [s * 0.42, 0.06], [s * 0.44, 0.3], [s * 0.55, 0.48], [s * 0.8, 0.25]].map(q => [q[0], q[1], -0.55]), 0.04)), 'Flat triangular bone over ribs 2–7. Spine, acromion, coracoid process, glenoid cavity, supraspinous / infraspinous fossae. Winging = long thoracic nerve palsy.', { lat: 'Scapulae' });
+def(SK, 'Pelvis', 'Ilium (×2)', 'T', pair(s => E([s * 0.55, 0.86, -0.1], [0.32, 0.15, 0.07], { rot: s * 0.2 })), 'Largest, uppermost part of the hip bone: iliac crest (L4), ASIS/PSIS, iliac fossa, auricular surface for the SI joint.', { lat: 'Os ilium' });
+def(SK, 'Pelvis', 'Ischium (×2)', 'T', pair(s => E([s * 0.45, 1.12, -0.05], [0.12, 0.1, 0.07])), 'Posterior-inferior hip bone: ischial tuberosity (“sit bone”), ischial spine, greater/lesser sciatic notches.', { lat: 'Os ischii' });
+def(SK, 'Pelvis', 'Pubis (×2)', 'T', pair(s => E([s * 0.1, 1.1, 0.2], [0.12, 0.05, 0.07])), 'Anterior hip bone: superior and inferior rami join at the pubic symphysis; obturator foramen. Ilium + ischium + pubis fuse at the acetabulum (Y-shaped triradiate cartilage).', { lat: 'Os pubis' });
+
+def(SK, 'Upper limb', 'Humerus', 'W', both(o => [BN(o.sh, o.el, 0.11)]), 'Surgical neck (axillary n., circumflex humeral a.) – common fracture; radial groove (radial n.); deltoid tuberosity; medial epicondyle (ulnar n.); capitulum and trochlea distally.', { lat: 'Humerus' });
+def(SK, 'Upper limb', 'Radius', 'W', both(o => [BN(lb(o.el, o.wr, 0, -0.04), lb(o.el, o.wr, 1, -0.04), 0.065)]), 'Lateral (thumb-side) forearm bone; head rotates at the elbow; distal end is wide – Colles’ fracture. Radial styloid process.', { lat: 'Radius' });
+def(SK, 'Upper limb', 'Ulna', 'W', both(o => [BN(lb(o.el, o.wr, 0, 0.04), lb(o.el, o.wr, 1, 0.04), 0.07)]), 'Medial forearm bone; olecranon forms the point of the elbow; trochlear notch grips the humerus; ulnar styloid.', { lat: 'Ulna' });
+const CAR = [['Scaphoid', 'Most commonly fractured carpal (fall on outstretched hand); retrograde blood supply → avascular necrosis; tender in the anatomical snuffbox.', lp(hh(0), hh(5), 0.17)], ['Lunate', 'Most commonly dislocated carpal; Kienböck disease (avascular necrosis).', lp(hh(0), hh(9), 0.15)], ['Triquetrum', 'Pyramidal; third carpal in the proximal row; articulates with the pisiform.', lp(hh(0), hh(13), 0.15)], ['Pisiform', 'Sesamoid bone in the tendon of flexor carpi ulnaris; ulnar nerve passes beside it (Guyon’s canal).', lp(hh(0), hh(17), 0.12)], ['Trapezium', 'Saddle joint with the thumb metacarpal (1st CMC joint) – common site of osteoarthritis.', lp(hh(0), hh(1), 0.85)], ['Trapezoid', 'Smallest of the distal row; articulates with the 2nd metacarpal.', lp(hh(0), hh(5), 0.3)], ['Capitate', 'Largest carpal bone; centre of the wrist; articulates with the 3rd metacarpal.', lp(hh(0), hh(9), 0.3)], ['Hamate', 'Hook of hamate – fracture can injure the ulnar nerve; articulates with 4th and 5th metacarpals.', lp(hh(0), lp(hh(13), hh(17), 0.5), 0.3)]];
+CAR.forEach(([n, t, c], i) => def(SK, 'Hand · Carpals (8)', n, 'HAND', [BL(c, 0.12)], t + ' (Needs a tracked hand.)', { lat: 'Os ' + n.toLowerCase(), mn: i === 0 ? 'Proximal row lateral→medial: Scaphoid, Lunate, Triquetrum, Pisiform; distal: Trapezium, Trapezoid, Capitate, Hamate – “Some Lovers Try Positions That They Can’t Handle”.' : '' }));
+def(SK, 'Hand · Metacarpals & phalanges', 'Metacarpals I–V', 'HAND', [BN(hh(1), hh(2), 0.16), ...[5, 9, 13, 17].map(i => BN(lp(hh(0), hh(i), 0.3), hh(i), 0.15))], 'Five long bones of the palm; each has base, shaft, head. The 1st (thumb) is the most mobile; “boxer’s fracture” = neck of the 5th.', { lat: 'Ossa metacarpi' });
+def(SK, 'Hand · Metacarpals & phalanges', 'Proximal phalanges (hand)', 'HAND', [BN(hh(2), hh(3), 0.14), ...[5, 9, 13, 17].map(i => BN(hh(i), hh(i + 1), 0.13))], 'First phalanx of each digit; the head forms the knuckle (MCP joint base).', { lat: 'Phalanges proximales' });
+def(SK, 'Hand · Metacarpals & phalanges', 'Middle phalanges (hand)', 'HAND', [5, 9, 13, 17].map(i => BN(hh(i + 1), hh(i + 2), 0.115)), 'Digits 2–5 only (the thumb has no middle phalanx). 14 phalanges per hand: thumb 2, others 3.', { lat: 'Phalanges mediae' });
+def(SK, 'Hand · Metacarpals & phalanges', 'Distal phalanges (hand)', 'HAND', [BN(hh(3), hh(4), 0.12), ...[5, 9, 13, 17].map(i => BN(hh(i + 2), hh(i + 3), 0.1))], 'Terminal bones with an expanded tuft supporting the nail bed and pulp.', { lat: 'Phalanges distales' });
+
+def(SK, 'Lower limb', 'Femur', 'W', both(o => [BN(lb(o.hp, o.kn, 0, -0.02), o.kn, 0.15)]), 'Longest, strongest bone. Head (fovea), neck (fracture risk in the elderly), greater/lesser trochanter, linea aspera, adductor tubercle, medial/lateral condyles.', { lat: 'Femur' });
+def(SK, 'Lower limb', 'Patella', 'W', both(o => [BL(lb(o.kn, o.hp, 0.07, 0), 0.1)]), 'Largest sesamoid bone, embedded in the quadriceps tendon; increases leverage of knee extension.', { lat: 'Patella' });
+def(SK, 'Lower limb', 'Tibia', 'W', both(o => [BN(lb(o.kn, o.an, 0.04, 0.01), lb(o.kn, o.an, 1, 0.01), 0.12)]), 'Shinbone – weight-bearing medial leg bone. Tibial plateau, tibial tuberosity (patellar ligament), anterior crest (subcutaneous), medial malleolus.', { lat: 'Tibia' });
+def(SK, 'Lower limb', 'Fibula', 'W', both(o => [BN(lb(o.kn, o.an, 0.08, -0.075), lb(o.kn, o.an, 1, -0.05), 0.05)]), 'Lateral, non-weight-bearing leg bone; lateral malleolus; neck is close to the common fibular nerve (injury → foot drop).', { lat: 'Fibula' });
+const FT = [['Talus', 'Transmits body weight from tibia to foot; no muscle attachments; forms the ankle mortise; fractures risk avascular necrosis.', o => BL(lb(o.an, o.to, 0.1, 0), 0.09), 'Tarsals: Talus, Calcaneus, Navicular, Cuboid, Medial/Intermediate/Lateral cuneiforms – “Tiger Cubs Need MILC”.'], ['Calcaneus', 'Heel bone: largest tarsal; Achilles tendon inserts; sustentaculum tali; most commonly fractured tarsal.', o => BN(lb(o.an, o.he, 0.3, 0), o.he, 0.1), ''], ['Navicular', 'Boat-shaped; medial arch keystone; tuberosity for tibialis posterior.', o => BL(lb(o.an, o.to, 0.3, 0.025), 0.055), ''], ['Cuboid', 'Lateral foot; groove for fibularis longus tendon; articulates with 4th/5th metatarsals.', o => BL(lb(o.an, o.to, 0.4, -0.05), 0.055), ''], ['Medial cuneiform', 'Largest cuneiform; articulates with the 1st metatarsal; tibialis anterior inserts.', o => BL(lb(o.an, o.to, 0.42, 0.05), 0.045), ''], ['Intermediate cuneiform', 'Smallest cuneiform; articulates with the 2nd metatarsal (keystone of the Lisfranc joint).', o => BL(lb(o.an, o.to, 0.43, 0.015), 0.04), ''], ['Lateral cuneiform', 'Articulates with the 3rd metatarsal and cuboid.', o => BL(lb(o.an, o.to, 0.42, -0.018), 0.04), '']];
+FT.forEach(([n, t, f, m]) => def(SK, 'Foot · Tarsals (7)', n, 'W', both(o => [f(o)]), t, { lat: 'Os ' + n.toLowerCase(), mn: m }));
+const MTK = [0.07, 0.035, 0, -0.035, -0.07];
+def(SK, 'Foot · Metatarsals & phalanges', 'Metatarsals I–V', 'W', both(o => MTK.map(k => BN(lb(o.an, o.to, 0.5, k), lb(o.an, o.to, 0.8, k), 0.035))), 'Five long bones; the 1st is shortest and stoutest; 5th metatarsal tuberosity – avulsion (Jones) fractures. Form the longitudinal and transverse arches.', { lat: 'Ossa metatarsi' });
+def(SK, 'Foot · Metatarsals & phalanges', 'Phalanges of the foot (14)', 'W', both(o => MTK.map(k => BN(lb(o.an, o.to, 0.83, k), lb(o.an, o.to, 0.98, k), 0.028))), 'Hallux (big toe) has 2 phalanges; toes 2–5 have 3 each (proximal, middle, distal) = 14 per foot.', { lat: 'Phalanges pedis' });
+
+/* ============ JOINTS ============ */
+const JT = 'Joints';
+[['Shoulder (glenohumeral)', 'sh', 0.16, 'Ball-and-socket; greatest ROM, least stable. Rotator cuff (SITS: Supraspinatus, Infraspinatus, Teres minor, Subscapularis) stabilises it. Anterior dislocation is most common.'], ['Elbow', 'el', 0.12, 'Hinge (humeroulnar + humeroradial) plus pivot (proximal radioulnar). Ulnar nerve runs behind the medial epicondyle (“funny bone”).'], ['Wrist (radiocarpal)', 'wr', 0.09, 'Condyloid joint between radius and proximal carpal row (scaphoid, lunate, triquetrum).'], ['Hip', 'hp', 0.13, 'Ball-and-socket (femoral head in acetabulum); deeply seated and very stable; strong iliofemoral ligament. Fractured neck risks avascular necrosis.'], ['Knee', 'kn', 0.14, 'Largest synovial joint – modified hinge. ACL prevents anterior tibial translation, PCL posterior; medial/lateral menisci; “unhappy triad” = ACL + MCL + medial meniscus.'], ['Ankle (talocrural)', 'an', 0.1, 'Hinge: tibia/fibula mortise on the talus; dorsiflexion/plantarflexion. Lateral ligaments (ATFL) are most often sprained.']].forEach(([n, k, w, t]) => def(JT, 'Major joints', n, 'W', both(o => [BL(o[k], w)]), t));
+def(JT, 'Major joints', 'Temporomandibular joint (TMJ)', 'H', pair(s => E([s * 0.92, 0.5, -0.25], [0.08, 0.1, 0.1])), 'Modified hinge/gliding joint with an articular disc between mandibular condyle and temporal fossa. Dislocates anteriorly on wide opening.');
+def(JT, 'Major joints', 'Sternoclavicular joint', 'T', pair(s => E([s * 0.1, -0.01, 0.4], [0.05, 0.04, 0.04])), 'Only articulation between the upper limb and axial skeleton; saddle-type synovial joint with an articular disc.');
+def(JT, 'Major joints', 'Acromioclavicular joint', 'T', pair(s => E([s * 0.96, -0.04, 0.0], [0.05, 0.04, 0.04])), 'Plane joint at the shoulder tip; “separated shoulder” = AC ligament sprain/tear.');
+def(JT, 'Major joints', 'Sacro-iliac joints', 'T', pair(s => E([s * 0.15, 0.97, -0.3], [0.07, 0.12, 0.05])), 'Partly synovial, mostly fibrous joints transferring weight from the spine to the pelvis; very little movement.');
+def(JT, 'Major joints', 'Pubic symphysis', 'T', [E([0, 1.12, 0.26], [0.05, 0.04, 0.04])], 'Secondary cartilaginous joint (fibrocartilage disc) between the pubic bodies; loosens in pregnancy.');
+def(JT, 'Major joints', 'Intervertebral discs', 'T', [...Array.from({ length: 11 }, (_, i) => E([0, 0.027 + i * 0.05, -0.42], [0.075, 0.01, 0.07])), ...Array.from({ length: 5 }, (_, i) => E([0, 0.64 + i * 0.075, -0.38], [0.11, 0.012, 0.075]))], 'Nucleus pulposus inside the annulus fibrosus; 23 discs; herniation (most often L4–L5, L5–S1) compresses the nerve root below.');
+def(JT, 'Hand joints', 'MCP joints (knuckles)', 'HAND', [2, 5, 9, 13, 17].map(i => BL(hh(i), 0.11)), 'Metacarpophalangeal: condyloid joints allowing flexion/extension and abduction/adduction.');
+def(JT, 'Hand joints', 'PIP joints', 'HAND', [6, 10, 14, 18].map(i => BL(hh(i), 0.09)), 'Proximal interphalangeal: hinge joints; rheumatoid arthritis spares the DIP, osteoarthritis affects DIP (Heberden’s) and PIP (Bouchard’s).');
+def(JT, 'Hand joints', 'DIP / thumb IP joints', 'HAND', [3, 7, 11, 15, 19].map(i => BL(hh(i), 0.08)), 'Distal interphalangeal joints (and the single thumb IP): hinge joints; psoriatic arthritis involves the DIP.');
+def(JT, 'Hand joints', '1st carpometacarpal joint', 'HAND', [BL(hh(1), 0.12)], 'Saddle joint of the thumb allowing opposition; commonest hand osteoarthritis site.');
+
+/* ============ MUSCULAR ============ */
+const MS = 'Muscular', MH = 'Head & neck muscles', MT = 'Trunk muscles', MA = 'Upper-limb muscles', ML = 'Lower-limb muscles';
+def(MS, MH, 'Frontalis', 'H', [E([0, -1.4, 0.5], [0.8, 0.3, 0.15])], 'Raises the eyebrows and wrinkles the forehead. CN VII (temporal branch). Part of occipitofrontalis.');
+def(MS, MH, 'Temporalis', 'H', pair(s => E([s * 1.0, -0.45, -0.2], [0.15, 0.5, 0.5])), 'Fan-shaped; elevates and retracts the mandible. CN V3 (mandibular).');
+def(MS, MH, 'Masseter', 'H', pair(s => E([s * 0.82, 1.0, -0.1], [0.12, 0.3, 0.15])), 'Strong elevator of the mandible; strongest muscle by weight for its size. CN V3.', { mn: 'Muscles of mastication (CN V3): Masseter, Temporalis, Medial & Lateral pterygoids.' });
+def(MS, MH, 'Orbicularis oculi', 'H', pair(s => E([s * 0.45, 0.3, 0.7], [0.3, 0.22, 0.08])), 'Closes the eyelids (blink); facial nerve (CN VII) palsy → cannot close the eye.');
+def(MS, MH, 'Orbicularis oris', 'H', [E([0, 1.2, 0.85], [0.35, 0.15, 0.1])], 'Sphincter of the mouth: closes and purses the lips. CN VII (buccal / marginal mandibular).');
+def(MS, MH, 'Zygomaticus major', 'H', pair(s => TB([[s * 0.8, 0.6, 0.5], [s * 0.6, 0.9, 0.7], [s * 0.4, 1.15, 0.8]], 0.05)), 'Draws the corner of the mouth up and back (smile). CN VII.');
+def(MS, MH, 'Buccinator', 'H', pair(s => E([s * 0.58, 1.1, 0.5], [0.18, 0.18, 0.1])), 'Cheek muscle; compresses cheeks against the teeth (blowing, chewing). CN VII.');
+def(MS, MH, 'Mentalis', 'H', [E([0, 1.65, 0.75], [0.14, 0.08, 0.06])], 'Raises and protrudes the lower lip (pouting). CN VII.');
+def(MS, MH, 'Sternocleidomastoid', 'T', pair(s => TB([[s * 0.12, 0.0, 0.42], [s * 0.2, -0.22, 0.2], [s * 0.34, -0.45, 0.0]], 0.045)), 'Rotates head to the opposite side, flexes the neck. CN XI (spinal accessory) + C2–C3. Divides the neck into anterior and posterior triangles.');
+def(MS, MT, 'Trapezius', 'T', [FL([[0, -0.45], [0.95, 0.0], [0.35, 0.5], [0, 0.62], [-0.35, 0.5], [-0.95, 0.0]].map(q => [q[0], q[1], -0.56]), 0.04)], 'Elevates, retracts and depresses the scapula. CN XI (spinal accessory); weakness gives a drooping shoulder.');
+def(MS, MT, 'Latissimus dorsi', 'T', pair(s => FL([[s * 0.1, 0.5], [s * 0.85, 0.1], [s * 0.92, 0.4], [s * 0.3, 0.9]].map(q => [q[0], q[1], -0.5]), 0.04)), 'Extends, adducts and medially rotates the arm (climbing). Thoracodorsal nerve (C6–C8).');
+def(MS, MT, 'Erector spinae', 'T', pair(s => TB([[s * 0.13, -0.1, -0.52], [s * 0.15, 0.45, -0.52], [s * 0.15, 0.95, -0.45]], 0.05)), 'Iliocostalis, longissimus, spinalis: extend and laterally flex the spine. Dorsal rami of spinal nerves.');
+def(MS, MT, 'Pectoralis major', 'T', pair(s => E([s * 0.45, 0.14, 0.5], [0.42, 0.18, 0.05], { rot: s * 0.2 })), 'Adducts and medially rotates the humerus. Medial & lateral pectoral nerves (C5–T1).');
+def(MS, MT, 'Serratus anterior', 'T', pair(s => E([s * 0.9, 0.3, 0.1], [0.07, 0.22, 0.22])), 'Protracts and rotates the scapula (boxer’s muscle). Long thoracic nerve (C5–C7); injury → winged scapula.');
+def(MS, MT, 'Diaphragm', 'T', [E([0, 0.47, 0.0], [0.82, 0.09, 0.42])], 'Main muscle of inspiration. Phrenic nerve (C3-4-5 keeps the diaphragm alive). Openings: IVC T8, esophagus T10, aorta T12.', { mn: 'I ate 10 eggs at 12: IVC T8, Esophagus T10, Aortic hiatus T12.' });
+def(MS, MT, 'Rectus abdominis', 'T', pair(s => E([s * 0.1, 0.72, 0.55], [0.1, 0.28, 0.05])), 'Flexes the trunk; “six-pack” from tendinous intersections. Enclosed in the rectus sheath. Intercostal / subcostal nerves T7–T12.');
+def(MS, MT, 'External oblique', 'T', pair(s => FL([[s * 0.3, 0.55], [s * 0.95, 0.45], [s * 0.95, 0.85], [s * 0.35, 0.92]].map(q => [q[0], q[1], 0.42]), 0.04)), 'Superficial lateral abdominal muscle (“hands in pockets” fibre direction). Rotates the trunk to the opposite side.');
+def(MS, MT, 'Psoas major', 'T', pair(s => TB([[s * 0.1, 0.55, -0.3], [s * 0.28, 0.9, -0.1], [s * 0.42, 1.12, 0.1]], 0.06)), 'Main hip flexor; with iliacus forms the iliopsoas. Lumbar plexus (L1–L3) passes through it.');
+def(MS, MT, 'Gluteus maximus', 'T', pair(s => E([s * 0.45, 1.05, -0.4], [0.35, 0.2, 0.15])), 'Largest muscle; extends and laterally rotates the thigh. Inferior gluteal nerve (L5–S2).');
+def(MS, MA, 'Deltoid', 'W', both(o => [MU(o.sh, lp(o.sh, o.el, 0.42), 0.26)]), 'Abducts the arm (15–90° after supraspinatus starts). Axillary nerve (C5-C6); injured in surgical neck fractures and shoulder dislocation.');
+def(MS, MA, 'Biceps brachii', 'W', both(o => [MU(lb(o.sh, o.el, 0.2, 0.0), lb(o.sh, o.el, 0.92, 0), 0.15)]), 'Flexes the elbow and supinates the forearm. Musculocutaneous nerve (C5–C6). Two heads (long and short).');
+def(MS, MA, 'Triceps brachii', 'W', both(o => [MU(lb(o.sh, o.el, 0.25, -0.07), lb(o.sh, o.el, 0.95, -0.05), 0.14)]), 'Extends the elbow. Radial nerve (C6–C8). Three heads: long, lateral, medial.');
+def(MS, MA, 'Brachioradialis', 'W', both(o => [MU(lb(o.el, o.wr, 0.05, -0.05), lb(o.el, o.wr, 0.6, -0.04), 0.1)]), 'Flexes the elbow in mid-pronation. Radial nerve – unusual: a flexor supplied by the radial nerve.');
+def(MS, MA, 'Forearm flexors', 'W', both(o => [MU(lb(o.el, o.wr, 0.1, 0.04), lb(o.el, o.wr, 0.92, 0.03), 0.11)]), 'Wrist and finger flexors (FCR, PL, FCU, FDS, FDP, FPL), mainly median nerve; FCU and medial FDP by the ulnar nerve. Common flexor origin = medial epicondyle (golfer’s elbow).');
+def(MS, MA, 'Forearm extensors', 'W', both(o => [MU(lb(o.el, o.wr, 0.1, -0.04), lb(o.el, o.wr, 0.92, -0.03), 0.1)]), 'Wrist and finger extensors; all radial nerve (posterior interosseous). Common extensor origin = lateral epicondyle (tennis elbow).');
+def(MS, ML, 'Rectus femoris', 'W', both(o => [MU(lb(o.hp, o.kn, 0.08, 0), lb(o.hp, o.kn, 0.92, 0), 0.19)]), 'Only quadriceps head that crosses the hip: flexes hip, extends knee. Femoral nerve (L2–L4). Quadriceps = rectus femoris, vastus lateralis/medialis/intermedius.');
+def(MS, ML, 'Vastus lateralis', 'W', both(o => [MU(lb(o.hp, o.kn, 0.15, -0.07), lb(o.hp, o.kn, 0.95, -0.05), 0.17)]), 'Largest quadriceps head; extends the knee; common IM-injection site (lateral thigh). Femoral nerve.');
+def(MS, ML, 'Vastus medialis', 'W', both(o => [MU(lb(o.hp, o.kn, 0.45, 0.07), lb(o.hp, o.kn, 0.97, 0.05), 0.14)]), 'Teardrop bulge above the knee; stabilises the patella (oblique fibres). Femoral nerve.');
+def(MS, ML, 'Hamstrings', 'W', both(o => [MU(lb(o.hp, o.kn, 0.1, -0.02), lb(o.hp, o.kn, 0.9, -0.02), 0.17)]), 'Biceps femoris, semitendinosus, semimembranosus: extend hip, flex knee. Tibial division of the sciatic nerve (long head BF: tibial; short head: common fibular).');
+def(MS, ML, 'Adductor group', 'W', both(o => [MU(lb(o.hp, o.kn, 0.06, 0.1), lb(o.hp, o.kn, 0.65, 0.08), 0.15)]), 'Adductor longus/brevis/magnus, gracilis, pectineus: adduct the thigh. Obturator nerve (L2–L4).');
+def(MS, ML, 'Sartorius', 'W', both(o => [VS([lb(o.hp, o.kn, 0.0, -0.08), lb(o.hp, o.kn, 0.5, 0.0), lb(o.hp, o.kn, 1.0, 0.07)], 0.05)]), 'Longest muscle: flexes, abducts and laterally rotates the hip (“tailor’s muscle”). Femoral nerve.');
+def(MS, ML, 'Gastrocnemius', 'W', both(o => [MU(lb(o.kn, o.an, 0.02, 0), lb(o.kn, o.an, 0.58, 0), 0.16)]), 'Two-headed calf muscle; plantarflexes the foot, flexes the knee. Tibial nerve (S1–S2). Ruptured Achilles tendon: Thompson test.');
+def(MS, ML, 'Soleus', 'W', both(o => [MU(lb(o.kn, o.an, 0.25, 0), lb(o.kn, o.an, 0.85, 0), 0.11)]), 'Deep to gastrocnemius; posture muscle (slow-twitch) and “peripheral heart” (venous pump). Tibial nerve.');
+def(MS, ML, 'Tibialis anterior', 'W', both(o => [MU(lb(o.kn, o.an, 0.1, 0.0), lb(o.kn, o.an, 0.92, 0.03), 0.07)]), 'Dorsiflexes and inverts the foot. Deep fibular nerve (L4–L5); weakness → foot drop.');
+def(MS, ML, 'Achilles tendon', 'W', both(o => [VS([lb(o.kn, o.an, 0.6, 0), lb(o.kn, o.an, 1.0, 0), o.he], 0.04)]), 'Calcaneal tendon – thickest, strongest tendon (gastrocnemius + soleus); rupture is common in sports.');
+
+/* ============ CARDIOVASCULAR (in situ) ============ */
+const CV = 'Cardiovascular', CH = 'Heart · In situ (on your chest)';
+def(CV, CH, 'Heart (whole organ)', 'T', [E([0.16, 0.34, 0.22], [0.22, 0.2, 0.18], { rot: -0.5, b: 1 })], 'Hollow muscular pump, about the size of a fist, in the middle mediastinum, ⅔ to the left of midline. Base at T5–T8, apex in the left 5th intercostal space at the mid-clavicular line. Weighs ~250–350 g; ~100,000 beats/day.', { lat: 'Cor', col: ART });
+def(CV, CH, 'Pericardium', 'T', [E([0.12, 0.33, 0.2], [0.33, 0.3, 0.25], { rot: -0.4 })], 'Double-walled sac: fibrous + serous (parietal and visceral/epicardium). Pericardial cavity contains 15–50 mL fluid; tamponade = Beck’s triad (hypotension, JVD, muffled heart sounds).', { col: '#ffc2a8' });
+def(CV, CH, 'Aorta (thoracic & abdominal)', 'T', [TB([[0.08, 0.26, 0.15], [0.07, 0.12, 0.1], [0.2, 0.07, 0.0], [0.17, 0.12, -0.3], [0.1, 0.55, -0.3], [0.04, 0.98, -0.28]], 0.035)], 'Largest artery (~2.5 cm). Parts: ascending, arch (brachiocephalic, L common carotid, L subclavian), descending thoracic, abdominal (bifurcates at L4 into the common iliacs). Abdominal aneurysm ≥ 5.5 cm → repair.', { col: ART });
+def(CV, CH, 'Superior vena cava', 'T', [TB([[-0.1, 0.02, 0.05], [-0.1, 0.15, 0.05], [-0.08, 0.28, 0.05]], 0.035)], 'Returns blood from the head, neck, upper limbs to the right atrium; formed by the two brachiocephalic veins (behind the 1st right costal cartilage). SVC syndrome from lung cancer.', { col: VEN });
+def(CV, CH, 'Inferior vena cava', 'T', [TB([[-0.1, 0.95, -0.26], [-0.1, 0.65, -0.22], [-0.08, 0.45, -0.05], [-0.06, 0.38, 0.1]], 0.04)], 'Largest vein; formed at L5 by the common iliac veins; passes the diaphragm at T8 to enter the right atrium.', { col: VEN });
+def(CV, 'Vessels · Neck & torso', 'Carotid arteries', 'T', pair(s => TB([[s * 0.1, 0.0, 0.18], [s * 0.15, -0.25, 0.12], [s * 0.18, -0.48, 0.1]], 0.025)), 'Common carotids (R from brachiocephalic, L from arch) bifurcate at C4/upper thyroid cartilage into internal (brain) and external (face). Carotid sinus baroreceptors; pulse palpable beside the larynx.', { col: ART });
+def(CV, 'Vessels · Neck & torso', 'Jugular veins', 'T', pair(s => TB([[s * 0.13, 0.0, 0.2], [s * 0.2, -0.25, 0.1], [s * 0.22, -0.48, 0.05]], 0.03)), 'Internal jugular (drains the brain) joins the subclavian to form the brachiocephalic vein; JVP estimates right atrial pressure.', { col: VEN });
+def(CV, 'Vessels · Neck & torso', 'Subclavian & axillary vessels', 'T', pair(s => TB([[s * 0.1, 0.0, 0.3], [s * 0.55, -0.04, 0.2], [s * 0.95, 0.04, 0.05]], 0.028)), 'Subclavian artery passes over rib 1 between scalenes; becomes axillary at the lateral border of rib 1 and brachial at teres major’s lower border.', { col: ART });
+def(CV, 'Vessels · Neck & torso', 'Common iliac vessels', 'T', pair(s => TB([[s * 0.02, 0.98, -0.28], [s * 0.2, 1.08, -0.2], [s * 0.4, 1.2, 0.0]], 0.03)), 'Aorta bifurcates at L4; common iliac arteries split into internal (pelvis) and external (leg → femoral) iliacs at the SI joint.', { col: ART });
+def(CV, 'Vessels · Neck & torso', 'Portal vein', 'T', [TB([[0.0, 0.62, -0.05], [-0.15, 0.58, 0.08], [-0.3, 0.55, 0.12]], 0.025)], 'Formed behind the pancreatic neck by the SMV + splenic vein; carries nutrient-rich blood to the liver. Portal hypertension → varices, ascites, caput medusae.', { col: VEN });
+def(CV, 'Vessels · Limbs', 'Brachial / radial / ulnar arteries', 'W', both(o => [VS([lb(o.sh, o.el, 0.2, 0.04), lb(o.sh, o.el, 0.95, 0.035), lb(o.el, o.wr, 0.5, 0.01), lb(o.el, o.wr, 1.0, 0.01)], 0.03)]), 'Brachial artery lies medial to biceps (blood-pressure auscultation in the cubital fossa), then divides into radial and ulnar arteries; radial pulse at the wrist.', { col: ART });
+def(CV, 'Vessels · Limbs', 'Cephalic & basilic veins', 'W', both(o => [VS([lb(o.sh, o.el, 0.2, -0.09), lb(o.sh, o.el, 0.95, -0.07), lb(o.el, o.wr, 0.6, -0.06), lb(o.el, o.wr, 1, -0.05)], 0.025), VS([lb(o.sh, o.el, 0.3, 0.1), lb(o.sh, o.el, 0.95, 0.09), lb(o.el, o.wr, 0.5, 0.07)], 0.025)]), 'Superficial veins of the arm: cephalic (lateral) drains into the axillary vein via the deltopectoral groove; basilic (medial). Median cubital vein = venepuncture site.', { col: VEN });
+def(CV, 'Vessels · Limbs', 'Femoral artery & vein', 'W', both(o => [VS([lb(o.hp, o.kn, 0.05, 0.03), lb(o.hp, o.kn, 0.55, 0.05), lb(o.hp, o.kn, 1.0, 0.02)], 0.035)]), 'Continuation of the external iliac artery under the inguinal ligament; femoral pulse midway between ASIS and pubic symphysis. NAVEL lateral→medial: Nerve, Artery, Vein, Empty space, Lymphatics.', { col: ART });
+def(CV, 'Vessels · Limbs', 'Great saphenous vein', 'W', both(o => [VS([lb(o.hp, o.kn, 0.1, 0.06), lb(o.kn, o.an, 0.0, 0.07), lb(o.kn, o.an, 0.7, 0.1), lb(o.kn, o.an, 1.0, 0.08)], 0.03)]), 'Longest vein; runs anterior to the medial malleolus; used for bypass grafts; varicose veins when valves fail.', { col: VEN });
+def(CV, 'Vessels · Limbs', 'Popliteal & tibial arteries', 'W', both(o => [VS([lb(o.hp, o.kn, 0.95, 0), lb(o.kn, o.an, 0.2, 0.01), lb(o.kn, o.an, 0.8, 0.03), lb(o.kn, o.an, 1.0, 0.04)], 0.028)]), 'Popliteal artery behind the knee splits into anterior and posterior tibial arteries; posterior tibial pulse behind the medial malleolus; dorsalis pedis on the foot dorsum.', { col: ART });
+
+/* ---- HEART DETAIL (magnified inset, anterior view as seen in a mirror) ---- */
+const HC = 'Heart · Chambers (detail)', HV = 'Heart · Great vessels (detail)', HVL = 'Heart · Valves & sub-valvular (detail)', HCO = 'Heart · Coronary circulation (detail)', HCS = 'Heart · Conduction system (detail)';
+const BLU = '#6f8cff', RED = '#ff5a6a';
+def(CV, HC, 'Right atrium', 'HEART', [E([-0.48, 0.0, 0.0], [0.3, 0.4, 0.26], { b: 1 })], 'Receives deoxygenated blood from the SVC, IVC and coronary sinus. Features: crista terminalis, pectinate muscles (anterior wall), fossa ovalis (remnant of the foramen ovale), sinus venarum (smooth part).', { col: BLU, mn: 'Blood flow: RA → tricuspid → RV → pulmonary valve → lungs → LA → mitral → LV → aortic valve → aorta.' });
+def(CV, HC, 'Right auricle', 'HEART', [E([-0.2, -0.38, 0.22], [0.14, 0.1, 0.1], { b: 1 })], 'Ear-shaped pouch of the right atrium (rough pectinate muscle); thrombus rarely forms here compared with the left auricle.', { col: BLU });
+def(CV, HC, 'Right ventricle', 'HEART', [E([-0.08, 0.42, 0.18], [0.4, 0.42, 0.28], { b: 1 })], 'Forms most of the anterior surface. Thin wall (~3–5 mm), crescent-shaped; trabeculae carneae, three papillary muscles, moderator band (septomarginal trabecula, carries the right bundle branch). Pumps to the lungs (low pressure).', { col: BLU });
+def(CV, HC, 'Left atrium', 'HEART', [E([0.3, -0.32, -0.22], [0.3, 0.2, 0.2], { b: 1 })], 'Posterior chamber receiving four pulmonary veins; smooth walls. Atrial fibrillation → thrombus in the left auricle → stroke. Enlargement can compress the esophagus (dysphagia).', { col: RED });
+def(CV, HC, 'Left auricle', 'HEART', [E([0.14, -0.28, 0.14], [0.13, 0.1, 0.1], { b: 1 })], 'Pouch of the left atrium; site of most atrial thrombi in AF (occluded surgically/with devices).', { col: RED });
+def(CV, HC, 'Left ventricle', 'HEART', [E([0.34, 0.35, -0.05], [0.36, 0.55, 0.3], { rot: -0.15, b: 1 })], 'Thickest chamber (8–12 mm); forms the apex and left border; two papillary muscles (anterolateral and posteromedial). Pumps to the systemic circulation at ~120 mmHg; hypertrophy in hypertension and aortic stenosis.', { col: RED });
+def(CV, HC, 'Interventricular septum', 'HEART', [TB([[0.06, -0.1, 0], [0.2, 0.35, 0.0], [0.42, 0.82, 0.02]], 0.05)], 'Muscular (lower) + membranous (upper) septum. VSD usually membranous; septal infarct involves LAD septal perforators; membranous part near the AV node.', { col: '#ff8ea0' });
+def(CV, HC, 'Apex', 'HEART', [E([0.48, 0.88, 0.05], [0.09, 0.09, 0.09], { b: 1 })], 'Formed by the left ventricle; points down, left and anterior. Apex beat (PMI) in the left 5th intercostal space at the mid-clavicular line (displaced in cardiomegaly).', { col: RED });
+def(CV, HC, 'Interatrial septum & fossa ovalis', 'HEART', [E([-0.2, -0.05, -0.1], [0.08, 0.1, 0.06])], 'Fossa ovalis is the closed foramen ovale. Patent foramen ovale in ~25% of adults → paradoxical embolism.', { col: '#ffc2a8' });
+def(CV, HV, 'Ascending aorta', 'HEART', [TB([[0.04, -0.22, 0.02], [0.02, -0.55, 0.0], [0.08, -0.78, -0.05]], 0.095)], 'Begins at the aortic valve (L 3rd costal cartilage); aortic root has three sinuses of Valsalva (two give origin to coronary arteries). Dissection: Stanford A.', { col: ART });
+def(CV, HV, 'Aortic arch', 'HEART', [TB([[0.08, -0.78, -0.05], [0.28, -0.97, -0.1], [0.52, -0.85, -0.2], [0.58, -0.55, -0.3]], 0.09)], 'Gives off three branches: brachiocephalic trunk, left common carotid, left subclavian. Aortic isthmus is vulnerable to deceleration injury; level T4–T5 (sternal angle).', { col: ART });
+def(CV, HV, 'Arch branches', 'HEART', [TB([[0.12, -0.82, -0.06], [0.05, -1.12, -0.05]], 0.05), TB([[0.24, -0.94, -0.1], [0.22, -1.2, -0.1]], 0.04), TB([[0.4, -0.92, -0.15], [0.55, -1.12, -0.15]], 0.045)], 'Brachiocephalic trunk (→ R subclavian + R common carotid), left common carotid, left subclavian – in that order from right to left.', { col: ART, mn: 'Arch order: “Big Cats Sleep” – Brachiocephalic, Carotid (L common), Subclavian (L).' });
+def(CV, HV, 'Descending aorta', 'HEART', [TB([[0.58, -0.55, -0.3], [0.6, -0.1, -0.4], [0.58, 0.4, -0.4]], 0.08)], 'Thoracic aorta gives posterior intercostals, bronchial, esophageal arteries; passes the diaphragm at T12.', { col: ART });
+def(CV, HV, 'Pulmonary trunk', 'HEART', [TB([[0.02, -0.12, 0.3], [0.06, -0.42, 0.22], [0.18, -0.58, 0.12]], 0.09)], 'Arises from the right ventricle; carries deoxygenated blood and bifurcates under the aortic arch. Ligamentum arteriosum (remnant of the ductus arteriosus) connects it to the arch.', { col: BLU });
+def(CV, HV, 'Pulmonary arteries (R & L)', 'HEART', [TB([[0.14, -0.54, 0.05], [-0.3, -0.56, -0.08], [-0.62, -0.5, -0.1]], 0.06), TB([[0.18, -0.58, 0.1], [0.5, -0.5, -0.05], [0.7, -0.42, -0.1]], 0.06)], 'The only arteries carrying deoxygenated blood. The right passes behind the ascending aorta and SVC; saddle pulmonary embolus sits at the bifurcation.', { col: BLU });
+def(CV, HV, 'Pulmonary veins (4)', 'HEART', [TB([[-0.1, -0.3, -0.3], [-0.55, -0.32, -0.3]], 0.04), TB([[-0.1, -0.22, -0.3], [-0.58, -0.17, -0.3]], 0.04), TB([[0.5, -0.32, -0.3], [0.85, -0.38, -0.3]], 0.04), TB([[0.52, -0.22, -0.3], [0.85, -0.2, -0.3]], 0.04)], 'Two from each lung (superior + inferior) drain oxygenated blood into the left atrium; the only veins carrying oxygenated blood. AF ablation isolates their ostia.', { col: RED });
+def(CV, HV, 'Superior vena cava', 'HEART', [TB([[-0.42, -0.95, -0.02], [-0.46, -0.45, 0.0], [-0.5, -0.3, 0.0]], 0.07)], 'Drains the upper body to the right atrium at the level of the 3rd costal cartilage; contains no valves.', { col: BLU });
+def(CV, HV, 'Inferior vena cava', 'HEART', [TB([[-0.42, 0.4, -0.1], [-0.42, 0.75, -0.15], [-0.4, 1.0, -0.15]], 0.07)], 'Drains everything below the diaphragm; enters the RA with the Eustachian valve.', { col: BLU });
+def(CV, HVL, 'Tricuspid valve (right AV)', 'HEART', [E([-0.25, 0.2, 0.05], [0.12, 0.12, 0.04])], 'Three leaflets (anterior, posterior, septal) between RA and RV with chordae tendineae to papillary muscles. Auscultation: lower left sternal edge (4th–5th ICS). Endocarditis in IV drug users.', { col: GOLD, mn: 'Valve order “Try Pulling My Aorta”: Tricuspid, Pulmonary, Mitral, Aortic (direction of blood flow).' });
+def(CV, HVL, 'Pulmonary valve', 'HEART', [E([0.02, -0.1, 0.22], [0.08, 0.05, 0.05])], 'Semilunar valve with 3 cusps (anterior, right, left) at the RV outflow. Auscultation: left 2nd ICS parasternal. Stenosis in tetralogy of Fallot.', { col: GOLD });
+def(CV, HVL, 'Mitral valve (left AV)', 'HEART', [E([0.2, 0.05, -0.12], [0.12, 0.11, 0.04])], 'Bicuspid (anterior and posterior leaflets) between LA and LV. Auscultation: apex (5th ICS MCL). Mitral stenosis (rheumatic) → opening snap; prolapse → mid-systolic click.', { col: GOLD });
+def(CV, HVL, 'Aortic valve', 'HEART', [E([0.07, -0.1, 0.0], [0.07, 0.05, 0.05])], 'Semilunar valve with 3 cusps (right, left, posterior/non-coronary). Auscultation: right 2nd ICS parasternal. Aortic stenosis: crescendo-decrescendo murmur radiating to the carotids.', { col: GOLD });
+def(CV, HVL, 'Papillary muscles & chordae tendineae', 'HEART', [E([0.28, 0.55, -0.05], [0.05, 0.1, 0.05]), E([0.48, 0.5, 0.0], [0.05, 0.1, 0.05]), TB([[0.2, 0.12, -0.1], [0.28, 0.47, -0.05]], 0.012), TB([[0.24, 0.1, -0.1], [0.48, 0.42, 0.0]], 0.012)], 'Papillary muscles contract with the ventricle to tense the chordae and prevent AV valve leaflet eversion. Papillary rupture after MI → acute mitral regurgitation.', { col: '#ff9eaa' });
+def(CV, HCO, 'Right coronary artery (RCA)', 'HEART', [TB([[-0.08, -0.28, 0.3], [-0.5, 0.0, 0.32], [-0.45, 0.4, 0.32], [-0.2, 0.72, 0.3]], 0.03)], 'From the right aortic sinus; runs in the right AV groove. Supplies the RA, RV, SA node (~60%), AV node (~80%) and – by the posterior descending artery in 85% (right dominance) – the inferior wall and posterior septum.', { col: '#ff8c3a', mn: 'RCA → SA node, AV node, inferior wall (“inferior MI = RCA”).' });
+def(CV, HCO, 'Left main coronary artery', 'HEART', [TB([[0.06, -0.28, 0.12], [0.1, -0.22, 0.22]], 0.04)], 'From the left aortic sinus; ~1–2 cm long, then divides into LAD and circumflex. “Widow-maker” if occluded.', { col: '#ff8c3a' });
+def(CV, HCO, 'Left anterior descending (LAD)', 'HEART', [TB([[0.1, -0.22, 0.22], [0.14, 0.2, 0.36], [0.3, 0.65, 0.34], [0.48, 0.85, 0.3]], 0.03)], 'Runs in the anterior interventricular groove; supplies the anterior LV wall, anterior 2/3 of the septum and the apex. Most commonly occluded coronary artery (anterior STEMI, V1–V4).', { col: '#ffb23a' });
+def(CV, HCO, 'Left circumflex (LCx)', 'HEART', [TB([[0.1, -0.22, 0.2], [0.45, -0.15, 0.15], [0.58, 0.15, -0.1], [0.55, 0.45, -0.2]], 0.028)], 'Runs in the left AV groove; supplies the lateral and posterior LV wall (lateral STEMI I, aVL, V5–V6) and the SA node in ~40%.', { col: '#ffcf5a' });
+def(CV, HCO, 'Posterior descending artery (PDA)', 'HEART', [TB([[-0.2, 0.72, 0.1], [0.0, 0.65, -0.2], [0.25, 0.75, -0.3], [0.4, 0.85, -0.2]], 0.024)], 'Runs in the posterior interventricular groove; supplies the inferior septum. Arises from the RCA (right-dominant, ~85%) or the LCx (left-dominant).', { col: '#ff8c3a' });
+def(CV, HCO, 'Great cardiac vein', 'HEART', [TB([[0.5, 0.82, 0.3], [0.3, 0.55, 0.38], [0.16, 0.1, 0.38], [0.2, -0.15, 0.2], [0.45, -0.1, -0.1]], 0.026)], 'Accompanies the LAD, then the circumflex to the coronary sinus. Cardiac veins: great, middle, small, anterior, plus Thebesian veins.', { col: VEN });
+def(CV, HCO, 'Coronary sinus', 'HEART', [TB([[0.45, -0.1, -0.1], [0.1, 0.0, -0.3], [-0.2, 0.0, -0.22]], 0.05)], 'Main venous drain of the heart in the posterior AV groove; opens into the right atrium. Persistent left SVC drains here.', { col: VEN });
+def(CV, HCS, 'SA node', 'HEART', [E([-0.52, -0.3, 0.05], [0.06, 0.1, 0.04])], 'Sinoatrial node: the pacemaker (60–100 bpm) at the SVC–RA junction near the crista terminalis; supplied by the RCA (60%). Sick sinus syndrome; vagal tone slows it.', { col: '#ffee66', mn: 'Conduction: SA node → AV node → Bundle of His → L & R bundle branches → Purkinje fibres.' });
+def(CV, HCS, 'AV node', 'HEART', [E([-0.12, 0.1, -0.02], [0.05, 0.04, 0.04])], 'Atrioventricular node in the triangle of Koch (RA septum); delays conduction ~0.1 s so ventricles fill. Intrinsic rate 40–60 bpm. First-degree block = PR > 200 ms.', { col: '#ffee66' });
+def(CV, HCS, 'Bundle of His', 'HEART', [TB([[-0.1, 0.12, -0.02], [0.04, 0.22, 0.0]], 0.025)], 'Only electrical connection between atria and ventricles (through the fibrous skeleton); crosses the membranous septum.', { col: '#ffee66' });
+def(CV, HCS, 'Right & left bundle branches', 'HEART', [TB([[0.04, 0.22], [-0.05, 0.55], [-0.15, 0.78]], 0.02), TB([[0.04, 0.22], [0.3, 0.55], [0.42, 0.8]], 0.022)], 'Right bundle (via the moderator band) to the RV; the left divides into anterior and posterior fascicles. Bundle-branch blocks widen QRS (> 120 ms); LBBB “WiLLiaM”, RBBB “MaRRoW”.', { col: '#ffee66' });
+def(CV, HCS, 'Purkinje fibres', 'HEART', [TB([[-0.15, 0.78], [-0.28, 0.6], [-0.3, 0.3]], 0.012), TB([[-0.15, 0.78], [-0.05, 0.7], [0.05, 0.4]], 0.012), TB([[0.42, 0.8], [0.58, 0.5], [0.6, 0.15]], 0.012), TB([[0.42, 0.8], [0.28, 0.7], [0.24, 0.35]], 0.012)], 'Fast-conducting (~4 m/s) subendocardial fibres depolarise the ventricles from apex to base for efficient ejection.', { col: '#ffee66' });
+note(CV, 'Heart · Layers', 'Heart wall layers', 'Epicardium (visceral pericardium; coronary vessels run here) → myocardium (cardiac muscle, thickest in LV) → endocardium (endothelium). Fibrous skeleton separates atria and ventricles and anchors the valves.');
+note(CV, 'Heart · Layers', 'Cardiac cycle & sounds', 'S1 = AV valves close (start of systole). S2 = semilunar valves close (start of diastole). S3 = rapid ventricular filling (normal in children, heart failure in adults). S4 = atrial kick into a stiff ventricle. Stroke volume ~70 mL, CO = SV × HR ≈ 5 L/min.');
+
+/* ============ RESPIRATORY ============ */
+const RS = 'Respiratory';
+def(RS, 'Upper airway', 'Nasal cavity', 'H', [E([0, 0.7, 0.5], [0.2, 0.3, 0.25])], 'Divided by the septum (vomer, perpendicular plate, septal cartilage); three conchae/turbinates warm and humidify; olfactory epithelium at the roof. Kiesselbach’s plexus – common site of epistaxis.');
+def(RS, 'Upper airway', 'Paranasal sinuses', 'H', [...pair(s => E([s * 0.35, -0.3, 0.65], [0.2, 0.15, 0.08])), ...pair(s => E([s * 0.45, 0.85, 0.5], [0.25, 0.2, 0.18])), E([0, 0.2, 0.1], [0.18, 0.1, 0.12])], 'Frontal, maxillary, ethmoid and sphenoid air spaces (lighten the skull, resonance). Maxillary sinus is largest and drains against gravity → sinusitis.');
+def(RS, 'Upper airway', 'Larynx', 'T', [E([0, -0.17, 0.2], [0.07, 0.08, 0.06])], 'Voice box (C3–C6): thyroid, cricoid, epiglottis, arytenoids; vocal folds. Recurrent laryngeal nerve supplies all intrinsic muscles except cricothyroid (external laryngeal nerve).');
+def(RS, 'Lower airway', 'Trachea', 'T', [TB([[0, -0.15, 0.17], [0, 0.0, 0.1], [0, 0.12, 0.06]], 0.04)], '~12 cm, from C6 to the carina at T4–T5; 16–20 C-shaped hyaline cartilage rings with the trachealis muscle posteriorly. Tracheostomy between rings 2–4.');
+def(RS, 'Lower airway', 'Main bronchi', 'T', [TB([[0, 0.12, 0.06], [-0.16, 0.2, 0.0], [-0.32, 0.26, -0.02]], 0.03), TB([[0, 0.12, 0.06], [0.18, 0.22, 0.0], [0.34, 0.3, -0.02]], 0.03)], 'Right main bronchus is shorter, wider, more vertical → aspirated objects usually go right (right lower lobe). Carina marks the bifurcation; the left main bronchus passes under the aortic arch.');
+def(RS, 'Lungs', 'Right lung – superior lobe', 'T', [E([-0.5, 0.05, 0.0], [0.32, 0.2, 0.28])], 'Right lung has 3 lobes. Apical and posterior segments; Pancoast tumours at the apex can cause Horner syndrome. Fissures: oblique and horizontal.', { col: '#ffb7cb', mn: 'Right lung: 3 lobes / 10 segments; left lung: 2 lobes / 8–10 segments + lingula + cardiac notch.' });
+def(RS, 'Lungs', 'Right lung – middle lobe', 'T', [E([-0.55, 0.27, 0.18], [0.3, 0.1, 0.18])], 'Between the horizontal and oblique fissures; lateral and medial segments; best auscultated in the right axilla/anterior chest. Middle lobe syndrome with extrinsic bronchial compression.', { col: '#ffb7cb' });
+def(RS, 'Lungs', 'Right lung – inferior lobe', 'T', [E([-0.5, 0.38, -0.12], [0.34, 0.17, 0.28])], 'Superior + four basal segments; the commonest site for aspiration pneumonia (supine: superior segment; upright: posterior basal).', { col: '#ffb7cb' });
+def(RS, 'Lungs', 'Left lung – superior lobe & lingula', 'T', [E([0.5, 0.07, 0.0], [0.3, 0.25, 0.28]), E([0.5, 0.35, 0.15], [0.26, 0.1, 0.16])], 'Left lung has 2 lobes: the superior lobe includes the lingula (analogue of the right middle lobe) and the cardiac notch.', { col: '#ffb7cb' });
+def(RS, 'Lungs', 'Left lung – inferior lobe', 'T', [E([0.5, 0.38, -0.12], [0.32, 0.17, 0.28])], 'Superior + basal segments; separated from the upper lobe by the oblique fissure. Apex at 2.5 cm above the clavicle; lower border reaches rib 6 (MCL), 8 (MAL), 10 (posterior).', { col: '#ffb7cb' });
+note(RS, 'Lungs', 'Pleura & mechanics', 'Visceral and parietal pleura with 5–10 mL fluid; costodiaphragmatic recess is the lowest point (effusions collect here, tapped at the 8th ICS in the MAL, above the rib). Tidal volume 500 mL, vital capacity ~4.5–5 L, FRC ≈ 2.4 L.');
+note(RS, 'Lungs', 'Alveoli & gas exchange', 'About 300 million alveoli (~70 m²). Type I pneumocytes (gas exchange), type II (surfactant → reduces surface tension; deficient in neonatal RDS), alveolar macrophages. Blood–air barrier ~0.5 µm.');
+
+/* ============ DIGESTIVE ============ */
+const DG = 'Digestive';
+def(DG, 'Mouth & pharynx', 'Tongue', 'H', [E([0, 1.3, 0.45], [0.3, 0.12, 0.3])], 'Muscular organ: intrinsic + extrinsic (genioglossus protrudes, CN XII). Taste: anterior ⅔ chorda tympani (CN VII), posterior ⅓ glossopharyngeal; general sensation V3/IX. Papillae: filiform, fungiform, foliate, vallate.');
+def(DG, 'Mouth & pharynx', 'Salivary glands', 'H', [...pair(s => E([s * 0.98, 1.0, -0.1], [0.12, 0.25, 0.14])), ...pair(s => E([s * 0.45, 1.75, 0.2], [0.14, 0.07, 0.1]))], 'Parotid (largest, serous, Stensen’s duct; CN IX; facial nerve runs through it), submandibular (mixed, Wharton’s duct) and sublingual (mucous). ~1–1.5 L saliva/day; mumps → parotitis.');
+def(DG, 'Mouth & pharynx', 'Pharynx', 'H', [TB([[0, 0.9, -0.5], [0, 1.5, -0.5], [0, 2.1, -0.35]], 0.18)], 'Nasopharynx, oropharynx, laryngopharynx: ~13 cm muscular tube (constrictors). Waldeyer’s ring of lymphoid tissue (adenoids, tonsils). Gag reflex: CN IX afferent, CN X efferent.');
+def(DG, 'Foregut & liver', 'Esophagus', 'T', [TB([[0, -0.35, -0.15], [0, 0.0, -0.18], [0.04, 0.35, -0.12], [0.1, 0.5, 0.0]], 0.03)], '~25 cm from C6 to T11; upper ⅓ skeletal, lower ⅓ smooth muscle. Constrictions: cricoid, aortic arch/left bronchus, diaphragm. Barrett esophagus: squamous → columnar metaplasia.');
+def(DG, 'Foregut & liver', 'Stomach', 'T', [E([0.33, 0.55, 0.12], [0.25, 0.15, 0.15], { rot: 0.4 })], 'J-shaped reservoir (T11–L3) with fundus, body, antrum and pylorus; rugae. Parietal cells: HCl + intrinsic factor; chief cells: pepsinogen; G cells: gastrin. H. pylori → ulcers. Vagal (CN X) supply.', { col: '#ffb09c' });
+def(DG, 'Foregut & liver', 'Liver', 'T', [E([-0.45, 0.5, 0.1], [0.42, 0.18, 0.28], { rot: -0.1 }), E([0.0, 0.46, 0.2], [0.3, 0.13, 0.2])], 'Largest internal organ (~1.5 kg). Right lobe, left lobe (falciform ligament), caudate, quadrate. Couinaud 8 segments. Dual supply: hepatic artery (25%) + portal vein (75%). Detoxification, bile, albumin, clotting factors.', { col: '#c05a46' });
+def(DG, 'Foregut & liver', 'Gallbladder', 'T', [E([-0.35, 0.67, 0.25], [0.05, 0.09, 0.05])], 'Stores and concentrates bile. Cystic duct + common hepatic duct = common bile duct; Murphy’s sign (RUQ pain on inspiration) in cholecystitis. Fundus meets the 9th costal cartilage.', { col: '#7bd45a' });
+def(DG, 'Foregut & liver', 'Pancreas', 'T', [E([0.0, 0.57, -0.05], [0.4, 0.05, 0.07], { rot: -0.1 })], 'Retroperitoneal at L1–L2: head (in the duodenal C-loop), neck, body, tail (spleen). Exocrine acini (lipase, amylase, trypsinogen) and endocrine islets (α glucagon, β insulin, δ somatostatin). Pancreatic adenocarcinoma often at the head → painless jaundice.', { col: '#f4c070' });
+def(DG, 'Foregut & liver', 'Spleen', 'T', [E([0.74, 0.5, -0.2], [0.1, 0.16, 0.08], { rot: 0.2 })], 'Largest lymphoid organ (ribs 9–11, left); red pulp filters old RBCs, white pulp mounts immune responses. Ruptures with left lower rib trauma; post-splenectomy → encapsulated organisms (vaccinate: pneumococcus, Hib, meningococcus).', { col: '#9a5ae0' });
+def(DG, 'Midgut & hindgut', 'Duodenum', 'T', [TB([[-0.05, 0.52, 0.05], [-0.25, 0.58, 0.0], [-0.25, 0.7, -0.05], [0.0, 0.72, -0.05], [0.12, 0.62, 0.0]], 0.035)], 'C-shaped, 25 cm; first part (duodenal cap) most prone to peptic ulcers; ampulla of Vater (major duodenal papilla) receives bile + pancreatic juice; Brunner’s glands.', { col: '#f0a090' });
+def(DG, 'Midgut & hindgut', 'Jejunum', 'T', [E([0.2, 0.78, 0.15], [0.28, 0.14, 0.1])], 'Proximal ⅖ of the small bowel: tall plicae circulares, long vasa recta, thick wall; most absorption of carbohydrates, protein and many vitamins.', { col: '#f4a78f' });
+def(DG, 'Midgut & hindgut', 'Ileum', 'T', [E([-0.05, 0.92, 0.15], [0.3, 0.12, 0.1])], 'Distal ⅗: Peyer’s patches, B12 and bile-salt absorption (terminal ileum – Crohn’s disease), short vasa recta with more arcades. Meckel’s diverticulum 2 ft from the ileocecal valve, 2 inches long, 2% (rule of 2s).', { col: '#f09a85' });
+def(DG, 'Midgut & hindgut', 'Cecum & appendix', 'T', [E([-0.5, 0.95, 0.15], [0.1, 0.1, 0.1]), TB([[-0.52, 1.03, 0.14], [-0.5, 1.1, 0.14]], 0.015)], 'Cecum: first part of the colon (ileocecal valve). Appendix attaches to the posteromedial cecum; McBurney’s point is ⅓ from the right ASIS to the umbilicus; appendicitis: periumbilical → RLQ pain.', { col: '#d98c80' });
+def(DG, 'Midgut & hindgut', 'Ascending colon', 'T', [TB([[-0.52, 0.92, 0.12], [-0.57, 0.8, 0.12], [-0.58, 0.7, 0.12]], 0.06)], 'Retroperitoneal; ends at the hepatic flexure (right colic flexure) beneath the liver. Taenia coli, haustra and epiploic appendages mark the colon.', { col: '#e6a090' });
+def(DG, 'Midgut & hindgut', 'Transverse colon', 'T', [TB([[-0.58, 0.7, 0.2], [-0.2, 0.78, 0.25], [0.2, 0.78, 0.25], [0.56, 0.68, 0.15]], 0.06)], 'Intraperitoneal on the transverse mesocolon; midgut/hindgut junction at the distal ⅓ (SMA→IMA). Splenic flexure is the “watershed” area.', { col: '#e6a090' });
+def(DG, 'Midgut & hindgut', 'Descending colon', 'T', [TB([[0.58, 0.68, 0.1], [0.62, 0.82, 0.05], [0.6, 0.97, 0.05]], 0.055)], 'Retroperitoneal; supplied by the inferior mesenteric artery (IMA), drained by the IMV (splenic). Diverticulosis common.', { col: '#e6a090' });
+def(DG, 'Midgut & hindgut', 'Sigmoid colon & rectum', 'T', [TB([[0.58, 0.97, 0.05], [0.4, 1.06, 0.1], [0.2, 0.99, 0.1], [0.05, 1.1, 0.0], [0.0, 1.12, -0.2], [0.0, 1.32, -0.2]], 0.05)], 'S-shaped, mobile; volvulus site. Rectum follows the sacral curve (three Houston valves); the anal canal has the pectinate (dentate) line separating visceral from somatic supply (hemorrhoids).', { col: '#e6a090' });
+
+/* ============ URINARY ============ */
+const UR = 'Urinary', UK = 'Kidney · In situ (on your torso)', UI = 'Kidney · Internal anatomy (detail)', UN = 'Nephron (microscopic detail)';
+def(UR, UK, 'Kidneys (×2)', 'T', pair(s => E([s * 0.36, 0.67, -0.3], [0.1, 0.17, 0.08], { rot: -s * 0.2 })), 'Retroperitoneal bean-shaped organs at T12–L3 (right lower because of the liver); ~11 cm, 150 g. Hilum at L1 transpyloric plane. Filter ~180 L/day (GFR ≈ 125 mL/min) → ~1.5 L urine. Renal fascia and perirenal fat protect them.', { lat: 'Renes', col: '#c0506a' });
+def(UR, UK, 'Adrenal (suprarenal) glands', 'T', pair(s => E([s * 0.3, 0.52, -0.3], [0.07, 0.05, 0.04])), 'Cap each kidney. Cortex (zona Glomerulosa – aldosterone, Fasciculata – cortisol, Reticularis – androgens; “GFR: salt, sugar, sex”) and medulla (catecholamines from chromaffin cells). Pheochromocytoma → paroxysmal hypertension.', { col: '#d9b84a' });
+def(UR, UK, 'Ureters', 'T', pair(s => TB([[s * 0.34, 0.76, -0.28], [s * 0.3, 0.95, -0.1], [s * 0.1, 1.12, 0.1]], 0.012)), '25–30 cm muscular tubes; three narrowings (pelvi-ureteric junction, pelvic brim crossing iliac vessels, vesico-ureteric junction) where stones lodge. “Water under the bridge”: ureter passes under the uterine artery/vas deferens.', { col: '#e09ae8' });
+def(UR, UK, 'Renal arteries & veins', 'T', pair(s => TB([[s * 0.06, 0.62, -0.28], [s * 0.2, 0.66, -0.3], [s * 0.3, 0.68, -0.3]], 0.016)), 'Renal arteries arise from the aorta at L1–L2 (right passes behind the IVC); the left renal vein is longer and crosses in front of the aorta (nutcracker syndrome). Each kidney receives ~20% of cardiac output.', { col: '#ff6a6a' });
+def(UR, UK, 'Urinary bladder', 'T', [E([0, 1.2, 0.05], [0.14, 0.1, 0.1])], 'Pelvic muscular reservoir (detrusor; trigone is smooth) holding 400–600 mL; micturition reflex S2–S4 (parasympathetic pelvic splanchnics contract the detrusor); internal sphincter (sympathetic), external urethral sphincter (somatic, pudendal n.).', { col: '#d58ae0' });
+def(UR, UI, 'Fibrous capsule & cortex', 'KID', [E([0, 0, 0], [0.62, 0.95, 0.35])], 'Outer layers: renal capsule (tough fibrous), renal cortex (contains renal corpuscles, PCT, DCT; light-brown granular) and the renal columns of Bertin dipping between pyramids. About 85% of nephrons are cortical, 15% juxtamedullary.', { col: '#b86a8a' });
+def(UR, UI, 'Renal pyramids (medulla)', 'KID', [-80, -50, -25, 0, 25, 50, 80].map(a => { const t = a * Math.PI / 180; return E([-0.12 + 0.46 * Math.cos(t), 0.6 * Math.sin(t), 0], [0.15, 0.1, 0.1], { rot: t }); }), '8–18 striated cone-shaped pyramids (renal medulla) – loops of Henle and collecting ducts; bases face the cortex, apices (renal papillae) project into minor calyces. Papillary necrosis in NSAID/analgesic nephropathy, sickle-cell, diabetes.', { col: '#8a3e68' });
+def(UR, UI, 'Renal columns (of Bertin)', 'KID', [-65, -38, -12, 12, 38, 65].map(a => { const t = a * Math.PI / 180; return TB([[-0.12 + 0.3 * Math.cos(t), 0.4 * Math.sin(t)], [-0.12 + 0.6 * Math.cos(t), 0.82 * Math.sin(t)]], 0.025); }), 'Cortical tissue extending between pyramids; carry interlobar vessels. A hypertrophied column of Bertin can mimic a mass on imaging.', { col: '#d98aa8' });
+def(UR, UI, 'Renal papillae & minor calyces', 'KID', [-80, -50, -25, 0, 25, 50, 80].map(a => { const t = a * Math.PI / 180; return TB([[-0.12 + 0.27 * Math.cos(t), 0.36 * Math.sin(t)], [-0.12 + 0.14 * Math.cos(t), 0.2 * Math.sin(t)]], 0.025); }), 'Papillae release urine into 8–18 cup-like minor calyces; urothelium lines the collecting system.', { col: '#e8b0f0' });
+def(UR, UI, 'Major calyces', 'KID', [TB([[-0.12, -0.2], [-0.2, -0.08], [-0.3, -0.04]], 0.05), TB([[-0.1, 0.0], [-0.2, 0.0], [-0.3, 0.0]], 0.05), TB([[-0.12, 0.2], [-0.2, 0.08], [-0.3, 0.04]], 0.05)], 'Superior, middle and inferior major calyces (2–3) that merge to form the renal pelvis.', { col: '#d58ae0' });
+def(UR, UI, 'Renal pelvis', 'KID', [E([-0.4, 0.0, 0.0], [0.15, 0.2, 0.1])], 'Funnel-shaped upper ureter; pelvi-ureteric junction obstruction → hydronephrosis. Transitional epithelium (urothelium).', { col: '#e09ae8' });
+def(UR, UI, 'Ureter', 'KID', [TB([[-0.5, 0.12], [-0.6, 0.55], [-0.55, 1.0], [-0.6, 1.4]], 0.045)], 'Carries urine by peristalsis to the bladder; blood supply from renal, gonadal, iliac and vesical arteries.', { col: '#e09ae8' });
+def(UR, UI, 'Renal artery & segmental branches', 'KID', [TB([[-1.0, -0.2, 0.1], [-0.7, -0.14, 0.1], [-0.45, -0.1, 0.1]], 0.045), TB([[-0.45, -0.1, 0.1], [-0.3, -0.45, 0.1]], 0.025), TB([[-0.45, -0.1, 0.1], [-0.3, 0.3, 0.1]], 0.025)], 'Renal artery → segmental → interlobar (in the columns) → arcuate (at the corticomedullary border) → interlobular/cortical radiate → afferent arterioles → glomerulus → efferent arterioles → vasa recta/peritubular capillaries.', { col: ART, mn: 'Renal blood path: Renal → Segmental → Interlobar → Arcuate → Interlobular → Afferent → Glomerulus → Efferent → Peritubular/Vasa recta.' });
+def(UR, UI, 'Renal vein', 'KID', [TB([[-1.0, 0.08, 0.1], [-0.7, 0.14, 0.1], [-0.45, 0.14, 0.1]], 0.06)], 'Anterior to the renal artery; exits the hilum; left renal vein receives the left gonadal and suprarenal veins (left varicocele).', { col: VEN });
+def(UR, UI, 'Arcuate arteries', 'KID', [-60, -30, 0, 30, 60].map(a => { const t0 = (a - 12) * Math.PI / 180, t1 = (a + 12) * Math.PI / 180, pts = []; for (let k = 0; k <= 4; k++) { const t = t0 + (t1 - t0) * k / 4; pts.push([-0.12 + 0.6 * Math.cos(t), 0.82 * Math.sin(t)]); } return TB(pts, 0.014); }), 'Arch along the corticomedullary border between pyramids and cortex; give interlobular arteries to the cortex.', { col: ART });
+def(UR, UI, 'Renal hilum & sinus', 'KID', [E([-0.62, 0.0, 0], [0.08, 0.2, 0.1])], 'Medial concavity where the artery, vein and pelvis enter/leave; the renal sinus contains calyces, pelvis, vessels and fat. Order front→back: vein, artery, pelvis (VAP).', { col: '#cfa0b8' });
+def(UR, UI, 'Adrenal gland (on top)', 'KID', [E([-0.1, -1.05, 0], [0.32, 0.12, 0.14])], 'Cortex: zona glomerulosa (aldosterone), fasciculata (cortisol), reticularis (androgens); medulla: adrenaline/noradrenaline. Separated from the kidney by perirenal fat, within the renal fascia.', { col: '#d9b84a' });
+def(UR, UN, 'Renal corpuscle (glomerulus + Bowman’s capsule)', 'NEPH', [E([-0.6, -0.7, 0], [0.1, 0.1, 0.1]), E([-0.6, -0.7, 0], [0.17, 0.17, 0.12])], 'Glomerulus (capillary tuft with fenestrated endothelium, glomerular basement membrane, podocyte foot processes = filtration barrier) inside Bowman’s capsule (parietal + visceral layers; Bowman’s space receives filtrate). Nephritic vs nephrotic syndromes affect this barrier.', { col: '#ff6a7a' });
+def(UR, UN, 'Afferent & efferent arterioles', 'NEPH', [TB([[-1.0, -0.95], [-0.78, -0.8]], 0.03), TB([[-0.45, -0.78], [-0.3, -0.95], [-0.1, -0.98]], 0.022)], 'Afferent (wider) brings blood in; the narrower efferent leaves → keeps glomerular pressure high. ACE inhibitors dilate the efferent arteriole; NSAIDs constrict the afferent arteriole (↓ GFR).', { col: ART });
+def(UR, UN, 'Proximal convoluted tubule (PCT)', 'NEPH', [TB([[-0.5, -0.62], [-0.38, -0.7], [-0.3, -0.52], [-0.18, -0.64], [-0.1, -0.46], [0.0, -0.55], [0.02, -0.4]], 0.04)], 'Brush-border epithelium; reabsorbs ~65% of Na⁺/H₂O and ~100% of glucose and amino acids (SGLT2); secretes organic acids/bases; PTH inhibits phosphate reabsorption here. Fanconi syndrome = generalised PCT failure.', { col: '#e8b0f0' });
+def(UR, UN, 'Loop of Henle (descending & ascending)', 'NEPH', [TB([[0.02, -0.4], [0.05, 0.2], [0.1, 0.78]], 0.03, { }), TB([[0.1, 0.78], [0.2, 0.84], [0.25, 0.1], [0.28, -0.35]], 0.04)], 'Thin descending limb: water-permeable, concentrates filtrate; thick ascending limb: Na⁺-K⁺-2Cl⁻ cotransporter (NKCC2, inhibited by loop diuretics), impermeable to water – creates the medullary gradient (countercurrent multiplier).', { col: '#c279e0', mn: 'Descending = water out; Ascending = salt out (“Thick = Thirsty for salt”).' });
+def(UR, UN, 'Distal convoluted tubule (DCT)', 'NEPH', [TB([[0.28, -0.4], [0.4, -0.68], [0.5, -0.5], [0.6, -0.62], [0.66, -0.45]], 0.035)], 'NaCl reabsorption via Na⁺-Cl⁻ cotransporter (thiazide target); Ca²⁺ reabsorption under PTH; macula densa cells at the start sense NaCl delivery.', { col: '#e090c8' });
+def(UR, UN, 'Juxtaglomerular apparatus', 'NEPH', [E([-0.42, -0.9, 0], [0.09, 0.07, 0.06])], 'Macula densa (DCT sensor) + juxtaglomerular (granular) cells (renin) + extraglomerular mesangium. Renin → angiotensin I → ACE → angiotensin II → aldosterone.', { col: GOLD });
+def(UR, UN, 'Collecting duct', 'NEPH', [TB([[0.7, -0.85], [0.72, -0.1], [0.74, 0.5], [0.76, 1.0]], 0.05)], 'Principal cells (ADH/aquaporin-2 insertion, aldosterone → ENaC) and intercalated cells (acid–base). Drains into the minor calyx via papillary ducts of Bellini. Nephrogenic DI = ADH resistance.', { col: '#b070e0' });
+def(UR, UN, 'Vasa recta', 'NEPH', [TB([[0.0, -0.4], [-0.08, 0.2], [-0.05, 0.85], [0.35, 0.85], [0.38, 0.2], [0.35, -0.35]], 0.014)], 'Capillary loops paralleling the loops of Henle: countercurrent exchangers that maintain the medullary osmotic gradient.', { col: '#ff8a8a' });
+note(UR, 'Kidney · Physiology', 'GFR, RAAS & acid–base', 'Filtration fraction = GFR/RPF ≈ 20%. Starling forces drive filtration; creatinine ≈ GFR marker; ADH (V2) → aquaporin-2; aldosterone → Na⁺ reabsorption/K⁺ secretion; ANP → natriuresis; EPO from peritubular fibroblasts; 1α-hydroxylase makes active vitamin D (calcitriol) in the PCT.');
+
+/* ============ NERVOUS ============ */
+const NS = 'Nervous', BR = 'Brain · Lobes & cortex', BS = 'Brain · Deep structures', NP = 'Peripheral nerves & cord';
+def(NS, BR, 'Frontal lobe', 'H', [E([0, -1.0, 0.2], [0.8, 0.65, 0.65])], 'Executive function, personality, voluntary motor (precentral gyrus – primary motor cortex, area 4), Broca’s area (speech production – inferior frontal gyrus, dominant side). Damage: disinhibition (Phineas Gage), Broca aphasia.', { col: '#ffd24a' });
+def(NS, BR, 'Parietal lobe', 'H', [E([0, -1.65, -0.5], [0.85, 0.5, 0.7])], 'Postcentral gyrus = primary somatosensory cortex; spatial awareness. Non-dominant lesion → hemispatial neglect; dominant → Gerstmann syndrome (agraphia, acalculia, finger agnosia, L/R confusion).', { col: '#ffc24a' });
+def(NS, BR, 'Temporal lobes', 'H', pair(s => E([s * 0.85, -0.3, -0.2], [0.25, 0.25, 0.55])), 'Auditory cortex, Wernicke’s area (comprehension; superior temporal gyrus, dominant side), hippocampus and amygdala (memory, emotion). Kluver–Bucy: hyperorality, hypersexuality; temporal lobe epilepsy.', { col: '#ffe04a' });
+def(NS, BR, 'Occipital lobe', 'H', [E([0, -1.0, -1.35], [0.7, 0.6, 0.35])], 'Primary visual cortex (V1, calcarine sulcus). Contralateral homonymous hemianopia with macular sparing after PCA stroke; “Anton syndrome”.', { col: '#ffb040' });
+def(NS, BR, 'Cerebellum', 'H', [E([0, -0.2, -1.15], [0.6, 0.3, 0.4])], 'Coordination, balance, motor learning; vermis (midline, truncal) and hemispheres (ipsilateral limb). Lesion → ipsilateral ataxia, intention tremor, dysmetria, nystagmus, dysdiadochokinesia (“DANISH”).', { col: '#ffd070' });
+def(NS, BR, 'Primary motor & sensory strips', 'H', [TB([[-0.7, -1.0, 0.0], [-0.5, -1.7, 0.0], [0.5, -1.7, 0.0], [0.7, -1.0, 0.0]], 0.05), TB([[-0.7, -1.0, -0.3], [-0.5, -1.7, -0.3], [0.5, -1.7, -0.3], [0.7, -1.0, -0.3]], 0.05)], 'Pre-central gyrus (motor, front) and post-central gyrus (sensory, behind). The homunculus: foot/leg medial near the midline (ACA territory), face/hand lateral (MCA territory).', { col: '#fff09a' });
+def(NS, BS, 'Brainstem (midbrain, pons, medulla)', 'H', [TB([[0, -0.45, -0.55], [0, -0.1, -0.62], [0, 0.2, -0.7]], 0.14)], 'Midbrain (CN III–IV), pons (CN V–VIII), medulla (CN IX–XII). Reticular formation (arousal), ascending/descending tracts, respiratory and cardiovascular centres. Locked-in syndrome after a ventral pontine stroke.', { col: '#e0b030', mn: 'Cranial nerves in the brainstem: 3-4 midbrain, 5-6-7-8 pons, 9-10-11-12 medulla (“rule of 4”).' });
+def(NS, BS, 'Corpus callosum', 'H', [TB([[0, -1.1, 0.5], [0, -1.55, 0.15], [0, -1.55, -0.45], [0, -1.15, -0.8]], 0.06)], 'Largest white-matter commissure connecting the hemispheres (genu, body, splenium). Callosotomy for refractory epilepsy → split-brain; agenesis is a congenital defect.', { col: '#fff3b0' });
+def(NS, BS, 'Thalamus', 'H', pair(s => E([s * 0.15, -0.85, -0.3], [0.13, 0.1, 0.18])), 'Sensory relay station to the cortex (all senses except olfaction): VPL (body), VPM (face), LGN (vision), MGN (hearing); thalamic pain syndrome (Dejerine–Roussy).', { col: '#ffe9a0' });
+def(NS, BS, 'Hypothalamus & pituitary', 'H', [E([0, -0.35, 0.1], [0.1, 0.08, 0.1]), E([0, 0.08, 0.1], [0.07, 0.05, 0.07])], 'Hypothalamus: homeostasis (temp, hunger, thirst, circadian rhythm via SCN), controls the pituitary. Anterior pituitary (FLAT PEG hormones) and posterior (ADH, oxytocin stored). Pituitary adenoma → bitemporal hemianopia (optic chiasm).', { col: '#a5e07a' });
+def(NS, BS, 'Pineal gland', 'H', [E([0, -0.62, -0.55], [0.05, 0.05, 0.05])], 'Secretes melatonin (circadian rhythm); calcifies with age – a midline marker on skull X-rays/CT.', { col: '#78e08a' });
+def(NS, BS, 'Hippocampus & amygdala', 'H', [...pair(s => TB([[s * 0.65, -0.3, -0.5], [s * 0.7, -0.25, -0.2], [s * 0.6, -0.2, 0.1]], 0.05)), ...pair(s => E([s * 0.55, -0.15, 0.15], [0.08, 0.08, 0.08]))], 'Hippocampus: forming new declarative memories (Alzheimer’s early; bilateral → anterograde amnesia; H.M.); amygdala: fear conditioning and emotional memory; Papez circuit.', { col: '#ffcc66' });
+def(NS, BS, 'Basal ganglia', 'H', pair(s => E([s * 0.45, -0.75, 0.0], [0.18, 0.15, 0.25])), 'Caudate, putamen, globus pallidus (+ subthalamic nucleus, substantia nigra): movement initiation. Parkinson (↓ nigral dopamine: resting tremor, rigidity, bradykinesia); Huntington (caudate atrophy, chorea).', { col: '#ffbb55' });
+def(NS, BS, 'Lateral ventricles', 'H', pair(s => E([s * 0.25, -1.15, -0.2], [0.12, 0.12, 0.45])), 'CSF is made by the choroid plexus (~500 mL/day; 150 mL total); flows lateral → foramen of Monro → 3rd → aqueduct of Sylvius → 4th → foramina of Luschka/Magendie → subarachnoid space → arachnoid granulations. Hydrocephalus when obstructed.', { col: '#7ac0ff' });
+note(NS, 'Cranial nerves', 'I – Olfactory', 'Smell (special sensory). Passes through the cribriform plate; anosmia after head trauma.', { mn: 'Oh Oh Oh To Touch And Feel Very Good Velvet, AH! (Olfactory, Optic, Oculomotor, Trochlear, Trigeminal, Abducens, Facial, Vestibulocochlear, Glossopharyngeal, Vagus, Accessory, Hypoglossal). “Some Say Marry Money, But My Brother Says Big Brains Matter More” = Sensory, Sensory, Motor, Motor, Both, Motor, Both, Sensory, Both, Both, Motor, Motor.' });
+note(NS, 'Cranial nerves', 'II – Optic', 'Vision (special sensory); optic canal; afferent limb of the pupillary light reflex. Lesion → ipsilateral blindness; chiasm → bitemporal hemianopia.');
+note(NS, 'Cranial nerves', 'III – Oculomotor', 'Motor: all extraocular muscles except SO4 and LR6, levator palpebrae; parasympathetic: pupillary constriction and accommodation (Edinger–Westphal). Palsy: “down and out” eye, ptosis, dilated pupil (compressive: PCom aneurysm).');
+note(NS, 'Cranial nerves', 'IV – Trochlear', 'Motor to the superior oblique (depresses & intorts the eye); the only cranial nerve exiting the dorsal brainstem; longest intracranial course. Palsy → vertical diplopia on going downstairs, head tilt away.');
+note(NS, 'Cranial nerves', 'V – Trigeminal', 'Sensory face (V1 ophthalmic, V2 maxillary, V3 mandibular); motor to muscles of mastication (V3). Trigeminal neuralgia – carbamazepine. Foramina: SOF, rotundum, ovale.');
+note(NS, 'Cranial nerves', 'VI – Abducens', 'Motor to the lateral rectus (abducts). Long intracranial course – false-localising sign in raised ICP; palsy → medial deviation, horizontal diplopia.');
+note(NS, 'Cranial nerves', 'VII – Facial', 'Motor to facial expression; taste to the anterior ⅔ of the tongue; parasympathetic to lacrimal/submandibular/sublingual glands; stapedius. Bell’s palsy = LMN (forehead involved); stroke = UMN (forehead spared). Exits via the stylomastoid foramen.', { mn: 'Branches “To Zanzibar By Motor Car”: Temporal, Zygomatic, Buccal, Mandibular, Cervical.' });
+note(NS, 'Cranial nerves', 'VIII – Vestibulocochlear', 'Hearing (cochlear) and balance (vestibular). Acoustic neuroma (vestibular schwannoma) at the cerebellopontine angle – NF2 bilateral; ototoxic drugs: aminoglycosides, loop diuretics, cisplatin.');
+note(NS, 'Cranial nerves', 'IX – Glossopharyngeal', 'Taste and sensation to the posterior ⅓ tongue, carotid sinus/body afferents, stylopharyngeus, parotid parasympathetics; afferent of the gag reflex. Jugular foramen.');
+note(NS, 'Cranial nerves', 'X – Vagus', 'Parasympathetics to thorax and abdomen (to the splenic flexure), motor to the pharynx/larynx (RLN), taste (epiglottis), afferent from aortic arch baroreceptors. Uvula deviates away from the lesion. Jugular foramen.');
+note(NS, 'Cranial nerves', 'XI – Accessory', 'Motor to the sternocleidomastoid and trapezius. Injury in the posterior triangle → shoulder drop. Cranial root joins the vagus; exits the jugular foramen.');
+note(NS, 'Cranial nerves', 'XII – Hypoglossal', 'Motor to the intrinsic and extrinsic tongue muscles (except palatoglossus, CN X). Tongue deviates TOWARD a LMN lesion (“lick your wounds”). Hypoglossal canal.');
+def(NS, NP, 'Spinal cord', 'T', [TB([[0, -0.4, -0.5], [0, 0.0, -0.5], [0, 0.45, -0.5], [0, 0.7, -0.45]], 0.025)], 'Extends from the foramen magnum to L1–L2 (conus medullaris); 31 pairs of spinal nerves (8 C, 12 T, 5 L, 5 S, 1 Co); cervical and lumbar enlargements; cauda equina below. Lumbar puncture below L2 (usually L3–L4).', { col: '#ffe680', mn: 'C8 nerves but only 7 cervical vertebrae: nerves C1–C7 exit above their vertebra, C8 below C7.' });
+def(NS, NP, 'Brachial plexus', 'T', pair(s => TB([[s * 0.1, -0.35, -0.45], [s * 0.45, -0.12, -0.1], [s * 0.9, 0.02, 0.0]], 0.02)), 'C5–T1 roots → trunks (upper, middle, lower) → divisions → cords (lateral, posterior, medial) → branches. “Randy Travis Drinks Cold Beer”. Erb palsy (C5–C6, “waiter’s tip”), Klumpke (C8–T1).', { col: NRV });
+def(NS, NP, 'Vagus nerve (neck/chest)', 'T', pair(s => TB([[s * 0.15, -0.45, 0.0], [s * 0.1, 0.0, 0.1], [s * 0.05, 0.4, -0.05]], 0.012)), 'Descends in the carotid sheath; the left recurrent laryngeal loops around the aortic arch, the right around the right subclavian artery. Vasovagal syncope; vagal stimulation slows the heart.', { col: NRV });
+def(NS, NP, 'Median / ulnar / radial nerves', 'W', both(o => [VS([lb(o.sh, o.el, 0.1, 0.02), lb(o.sh, o.el, 1, 0.03), lb(o.el, o.wr, 0.5, 0.01), lb(o.el, o.wr, 1, 0.0)], 0.015), VS([lb(o.sh, o.el, 0.3, -0.05), lb(o.sh, o.el, 0.95, -0.06), lb(o.el, o.wr, 0.4, -0.05)], 0.015)]), 'Median (C6–T1): carpal tunnel, “ape hand”; ulnar (C8–T1): behind the medial epicondyle, “claw hand”; radial (C5–T1): spiral groove – wrist drop in humeral shaft fractures.', { col: NRV });
+def(NS, NP, 'Sciatic nerve', 'W', both(o => [VS([lb(o.hp, o.kn, 0.02, -0.04), lb(o.hp, o.kn, 0.5, -0.02), lb(o.hp, o.kn, 0.95, 0.0)], 0.03)]), 'L4–S3; the largest nerve; exits the greater sciatic foramen below piriformis, divides into tibial and common fibular nerves near the popliteal fossa. IM-injection safe zone = upper outer buttock quadrant.', { col: NRV });
+def(NS, NP, 'Femoral & obturator nerves', 'W', both(o => [VS([lb(o.hp, o.kn, 0.02, 0.04), lb(o.hp, o.kn, 0.5, 0.06), lb(o.hp, o.kn, 0.9, 0.04)], 0.02)]), 'Femoral (L2–L4) → quadriceps, sartorius, skin (saphenous); obturator (L2–L4) → thigh adductors.', { col: NRV });
+def(NS, NP, 'Common fibular & tibial nerves', 'W', both(o => [VS([lb(o.kn, o.an, 0.0, -0.06), lb(o.kn, o.an, 0.4, -0.08), lb(o.kn, o.an, 0.8, -0.05)], 0.02), VS([lb(o.kn, o.an, 0.0, 0.0), lb(o.kn, o.an, 0.6, 0.02), lb(o.kn, o.an, 1.0, 0.05)], 0.02)]), 'Common fibular winds around the fibular neck (vulnerable, foot drop); the tibial nerve runs down the posterior compartment behind the medial malleolus (tarsal tunnel).', { col: NRV });
+
+/* ============ ENDOCRINE / LYMPHATIC / REPRODUCTIVE / SPECIAL SENSES ============ */
+const EN = 'Endocrine';
+def(EN, 'Glands', 'Thyroid gland', 'T', [...pair(s => E([s * 0.1, -0.21, 0.19], [0.06, 0.1, 0.04])), E([0, -0.17, 0.2], [0.06, 0.02, 0.03])], 'Butterfly-shaped gland at C5–T1 with isthmus over tracheal rings 2–4; makes T3/T4 (iodine) and calcitonin (C cells). Graves (TSI antibodies), Hashimoto (anti-TPO), goitre. Moves up on swallowing.', { col: '#78e08a' });
+def(EN, 'Glands', 'Thymus', 'T', [E([0, 0.05, 0.35], [0.15, 0.12, 0.06])], 'Anterior mediastinum; T-cell maturation (positive/negative selection); involutes after puberty; thymoma associated with myasthenia gravis.', { col: '#62e0cf' });
+note(EN, 'Glands', 'Parathyroid glands', 'Four small glands behind the thyroid; PTH ↑ serum Ca²⁺ (bone resorption, renal Ca²⁺ reabsorption, vitamin D activation). Hypoparathyroidism after thyroidectomy → tetany (Chvostek, Trousseau).');
+note(EN, 'Glands', 'Pancreatic islets', 'α cells (glucagon), β cells (insulin, amylin), δ cells (somatostatin), PP cells; ~1–2% of the pancreas. Type 1 DM autoimmune β-cell destruction.');
+const LY = 'Lymphatic';
+def(LY, 'Nodes & ducts', 'Cervical lymph nodes', 'H', pair(s => E([s * 0.7, 2.15, 0.1], [0.12, 0.14, 0.1])), 'Superficial and deep chains along the SCM/IJV; Virchow’s node (left supraclavicular) → abdominal malignancy (Troisier’s sign).');
+def(LY, 'Nodes & ducts', 'Axillary lymph nodes', 'T', pair(s => E([s * 1.05, 0.12, 0.0], [0.1, 0.1, 0.1])), 'Five groups (anterior, posterior, central, lateral, apical) draining the arm and breast (75% of breast lymph); sentinel node biopsy for breast cancer.');
+def(LY, 'Nodes & ducts', 'Inguinal lymph nodes', 'T', pair(s => E([s * 0.45, 1.16, 0.34], [0.12, 0.08, 0.06])), 'Superficial inguinal nodes drain the lower limb, perineum, external genitalia and lower anal canal; enlarged in cellulitis/STIs.');
+def(LY, 'Nodes & ducts', 'Thoracic duct', 'T', [TB([[0.0, 0.92, -0.3], [-0.04, 0.5, -0.3], [-0.03, 0.1, -0.28], [0.12, -0.12, -0.1], [0.2, -0.18, 0.1]], 0.015)], 'Drains ¾ of the body’s lymph (everything except the right arm/head/chest); starts at the cisterna chyli (L1–L2) and empties into the left venous angle (IJV–subclavian). Chylothorax if injured.', { col: '#62e0cf' });
+note(LY, 'Immune organs', 'Tonsils & MALT', 'Waldeyer’s ring (adenoid, tubal, palatine, lingual tonsils), Peyer’s patches (ileum) and appendix: mucosa-associated lymphoid tissue; palatine tonsils lie between the palatoglossal and palatopharyngeal arches.');
+note(LY, 'Immune organs', 'Bone marrow', 'Primary lymphoid organ: hematopoiesis (red marrow in the axial skeleton and proximal long bones in adults); B-cell maturation; biopsy from the posterior iliac crest.');
+const RP = 'Reproductive';
+def(RP, 'Female pelvis (schematic)', 'Uterus, tubes & ovaries', 'T', [E([0, 1.2, -0.05], [0.12, 0.1, 0.08]), ...pair(s => TB([[s * 0.1, 1.15, -0.05], [s * 0.3, 1.1, -0.1]], 0.012)), ...pair(s => E([s * 0.33, 1.13, -0.12], [0.06, 0.05, 0.04]))], 'Uterus (fundus, body, cervix) anteverted; uterine tubes (infundibulum, ampulla – usual fertilisation site, isthmus); ovaries (follicles, corpus luteum). Ectopic pregnancy typically in the ampulla. Round ligament, broad ligament, ovarian ligament.', { col: '#ff8fcf' });
+def(RP, 'Male pelvis (schematic)', 'Prostate & testes', 'T', [E([0, 1.3, 0.0], [0.07, 0.05, 0.05]), ...pair(s => E([s * 0.12, 1.5, 0.15], [0.05, 0.07, 0.05]))], 'Prostate (walnut-sized) surrounds the prostatic urethra; PSA; BPH in the transition zone, cancer in the peripheral zone (palpable on DRE). Testes: seminiferous tubules (Sertoli, spermatogenesis), Leydig cells (testosterone); cremasteric reflex L1–L2.', { col: '#ff8fcf' });
+const SN = 'Special senses';
+def(SN, 'Eye', 'Eyeballs', 'H', pair(s => E([s * 0.45, 0.3, 0.55], [0.2, 0.2, 0.2])), 'Layers: fibrous (sclera, cornea), vascular (choroid, ciliary body, iris), neural (retina). Lens focuses via the ciliary muscle (parasympathetic CN III). Aqueous humour flows posterior chamber → pupil → anterior chamber → trabecular meshwork → canal of Schlemm; ↑IOP → glaucoma.', { col: '#ffe08a', mn: 'Extraocular muscles: LR6 SO4 AO3 – lateral rectus (CN VI), superior oblique (CN IV), all others (CN III).' });
+def(SN, 'Eye', 'Lens & iris (pupil)', 'H', pair(s => E([s * 0.45, 0.3, 0.7], [0.08, 0.08, 0.04])), 'Biconvex lens (crystallin), accommodation by relaxation of the zonules; iris sphincter (parasympathetic, miosis) and dilator (sympathetic, mydriasis); cataract = opaque lens.', { col: '#7fd0ff' });
+def(SN, 'Eye', 'Optic nerves & chiasm', 'H', [...pair(s => TB([[s * 0.4, 0.3, 0.3], [s * 0.25, 0.2, 0.0], [0.05 * s, 0.05, 0.0]], 0.03)), E([0, 0.05, 0.0], [0.08, 0.04, 0.05])], 'Retinal ganglion cell axons form the optic nerve → chiasm (nasal fibres cross) → optic tract → LGN → optic radiations (Meyer’s loop temporal; parietal upper) → V1.', { col: '#ffe080' });
+def(SN, 'Ear', 'Inner ear (cochlea & labyrinth)', 'H', pair(s => E([s * 0.9, 0.35, -0.25], [0.1, 0.1, 0.1])), 'Cochlea (organ of Corti, hair cells; tonotopic: base = high frequency), vestibule (utricle, saccule: linear acceleration) and semicircular canals (angular acceleration). Meniere’s disease: vertigo, tinnitus, hearing loss.', { col: '#ffe08a' });
+
+/* ============ CLINICAL LANDMARKS ============ */
+/* ============ ADDED: high-yield topics for medical students ============ */
+{
+const MD = 'Shoulder, pelvis & deep muscles';
+def(MS, MD, 'Rotator cuff (SITS)', 'T', pair(s => E([s * 0.62, 0.08, -0.47], [0.24, 0.13, 0.05], { rot: s * 0.15 })), 'Supraspinatus (abduction 0–15°, suprascapular n.), Infraspinatus & Teres minor (lateral rotation; suprascapular / axillary n.), Subscapularis (medial rotation; subscapular nn.). Stabilise the glenohumeral joint; supraspinatus tendon is the most often torn (painful arc 60–120°, empty-can test).', { mn: 'SITS: Supraspinatus, Infraspinatus, Teres minor, Subscapularis.' });
+def(MS, MD, 'Internal oblique & transversus abdominis', 'T', pair(s => FL([[s * 0.3, 0.6], [s * 0.9, 0.5], [s * 0.9, 0.9], [s * 0.35, 0.95]].map(q => [q[0], q[1], 0.36]), 0.03)), 'Deep anterolateral abdominal wall. Internal oblique fibres run up and medially (perpendicular to external oblique); transversus abdominis is horizontal. Their aponeuroses form the rectus sheath and the conjoint tendon (inguinal canal). T7–L1.');
+def(MS, MD, 'Gluteus medius & minimus', 'T', pair(s => E([s * 0.6, 0.93, -0.28], [0.2, 0.12, 0.12])), 'Abduct and medially rotate the hip; keep the pelvis level when standing on one leg. Superior gluteal nerve (L4–S1). Weakness → positive Trendelenburg sign (pelvis drops on the opposite side). Safe IM site = ventrogluteal.');
+def(MS, MD, 'Quadratus lumborum', 'T', pair(s => TB([[s * 0.2, 0.62, -0.4], [s * 0.26, 0.8, -0.38], [s * 0.3, 0.98, -0.36]], 0.045)), 'Posterior abdominal wall from rib 12 to the iliac crest; laterally flexes the spine and fixes rib 12 in inspiration. Common source of low-back pain.');
+def(MS, MD, 'Pelvic floor (levator ani)', 'T', [E([0, 1.26, -0.12], [0.2, 0.04, 0.16])], 'Puborectalis, pubococcygeus, iliococcygeus (+ coccygeus) support the pelvic organs; puborectalis sling maintains faecal continence. S3–S4 and pudendal nerve. Weakness after childbirth → prolapse and stress incontinence.');
+note(MS, MD, 'Intercostal muscles', 'External intercostals (inspiration, “hands in pockets”), internal and innermost intercostals (forced expiration). Neurovascular bundle runs in the costal groove under each rib — order superior→inferior: Vein, Artery, Nerve. Insert needles just above the rib below.', { mn: 'VAN (top → bottom) under each rib.' });
+note(MS, 'Physiology notes', 'Skeletal vs cardiac vs smooth muscle', 'Skeletal: striated, voluntary, multinucleated, troponin–Ca²⁺. Cardiac: striated, involuntary, intercalated discs, Ca²⁺-induced Ca²⁺ release. Smooth: non-striated, calmodulin–MLCK. Neuromuscular junction uses ACh on nicotinic receptors (myasthenia gravis = anti-AChR antibodies).');
+
+const VA = 'Vessels · Abdominal aorta branches';
+def(CV, VA, 'Coeliac trunk (T12)', 'T', [TB([[0.06, 0.5, -0.28], [0.06, 0.5, -0.12], [-0.1, 0.5, -0.05], [0.25, 0.5, -0.05]], 0.016)], 'First unpaired branch at T12: left gastric, splenic and common hepatic arteries → foregut (oesophagus to 2nd part of duodenum, liver, gallbladder, pancreas, spleen).', { col: ART });
+def(CV, VA, 'Superior mesenteric artery (L1)', 'T', [TB([[0.06, 0.58, -0.28], [0.05, 0.62, -0.1], [0.0, 0.8, 0.1], [-0.1, 0.95, 0.15]], 0.016)], 'Arises at L1 and passes over the 3rd part of the duodenum (SMA syndrome; left renal vein “nutcracker”). Supplies the midgut: 2nd part of duodenum to the proximal ⅔ of the transverse colon. Acute mesenteric ischaemia: pain out of proportion to signs.', { col: ART });
+def(CV, VA, 'Inferior mesenteric artery (L3)', 'T', [TB([[0.05, 0.85, -0.28], [0.12, 0.9, -0.15], [0.2, 1.0, -0.05]], 0.013)], 'Arises at L3: left colic, sigmoid and superior rectal arteries → hindgut (distal ⅓ transverse colon to upper anal canal). Watershed areas: splenic flexure (Griffiths’ point) and rectosigmoid (Sudeck’s point).', { col: ART, mn: 'Aortic branches “T12 coeliac, L1 SMA, L1–2 renal, L3 IMA, L4 bifurcation”.' });
+def(CV, VA, 'Azygos vein', 'T', [TB([[-0.06, 0.6, -0.36], [-0.06, 0.25, -0.38], [-0.06, 0.1, -0.3], [-0.04, 0.06, -0.1]], 0.018)], 'Ascends to the right of the thoracic vertebrae and arches over the right main bronchus at T4 to drain into the SVC. Important porto-caval and caval–caval collateral route.', { col: VEN });
+def(CV, 'Vessels · Neck & torso', 'Vertebral arteries', 'T', pair(s => TB([[s * 0.12, 0.0, 0.0], [s * 0.1, -0.2, -0.22], [s * 0.08, -0.42, -0.3]], 0.014)), 'First branch of the subclavian; ascend through the foramina transversaria C6→C1, enter the skull via the foramen magnum and unite as the basilar artery (posterior circulation: brainstem, cerebellum, occipital lobes).', { col: ART });
+def(CV, 'Vessels · Head', 'Circle of Willis', 'H', [TB([[0, -0.15, 0.35], [0.22, -0.12, 0.2], [0.26, -0.08, -0.05], [0.14, -0.05, -0.3], [0, -0.04, -0.38], [-0.14, -0.05, -0.3], [-0.26, -0.08, -0.05], [-0.22, -0.12, 0.2], [0, -0.15, 0.35]], 0.03), TB([[0, -0.04, -0.38], [0, 0.15, -0.6]], 0.03)], 'Arterial ring at the base of the brain: anterior cerebral + anterior communicating, internal carotids, posterior communicating, posterior cerebral (from the basilar). Berry aneurysms (commonest at the AComm) → subarachnoid haemorrhage (thunderclap headache). MCA stroke: contralateral face/arm weakness, aphasia if dominant.', { col: ART });
+note(CV, 'Circulation notes', 'Fetal circulation', 'Umbilical vein (oxygenated) → ductus venosus → IVC → right atrium → foramen ovale → left atrium; SVC blood → RV → pulmonary trunk → ductus arteriosus → aorta. Two umbilical arteries return blood. After birth: foramen ovale → fossa ovalis, ductus arteriosus → ligamentum arteriosum (kept open by PGE₁, closed by indomethacin), ductus venosus → ligamentum venosum, umbilical vein → ligamentum teres.');
+note(CV, 'Circulation notes', 'Dural venous sinuses', 'Superior & inferior sagittal, straight, transverse, sigmoid → internal jugular vein; cavernous sinus (CN III, IV, V1, V2 in the wall; CN VI and ICA inside) — danger triangle of the face infections → cavernous sinus thrombosis.');
+note(CV, 'Circulation notes', 'Blood pressure & JVP', 'BP = CO × TPR; CO = HR × SV. Measure brachial BP with the cuff at heart level. JVP: patient at 45°, look between the heads of SCM; height > 3 cm above the sternal angle = raised (right heart failure, fluid overload, tamponade). Hepatojugular reflux; Kussmaul sign.');
+
+note(RS, 'Lungs', 'Bronchopulmonary segments', 'Right lung 10 segments (upper 3: apical, posterior, anterior; middle 2: lateral, medial; lower 5: superior, medial/anterior/lateral/posterior basal). Left lung 8–10 (apicoposterior, anterior, superior & inferior lingular, lower lobe basal). Aspiration goes most often to the right lower lobe (wider, more vertical right main bronchus).');
+note(RS, 'Lungs', 'Lung volumes & spirometry', 'TV ~500 mL; IRV, ERV, RV (cannot be measured by spirometry). Obstructive (asthma, COPD): FEV₁/FVC < 0.7. Restrictive (fibrosis): FEV₁/FVC normal or ↑, ↓ TLC. Dead space, V/Q mismatch, oxyhaemoglobin curve shifts right with ↑CO₂, ↑H⁺, ↑temp, ↑2,3-BPG.');
+
+def(DG, 'Foregut & liver', 'Biliary tree (CBD)', 'T', [TB([[-0.3, 0.52, 0.18], [-0.2, 0.56, 0.12], [-0.12, 0.62, 0.05], [-0.1, 0.68, 0.0]], 0.012), TB([[-0.35, 0.64, 0.24], [-0.24, 0.6, 0.15]], 0.01)], 'Right & left hepatic ducts → common hepatic duct + cystic duct → common bile duct → joins the pancreatic duct at the ampulla of Vater (sphincter of Oddi, 2nd part of duodenum). Calot’s triangle (cystic duct, CHD, inferior liver edge) contains the cystic artery. Obstruction → jaundice, pale stool, dark urine; Courvoisier’s law.', { col: '#7bd45a' });
+def(DG, 'Midgut & hindgut', 'Greater omentum & peritoneum', 'T', [FL([[-0.55, 0.68], [0.55, 0.68], [0.5, 1.08], [-0.5, 1.08]].map(q => [q[0], q[1], 0.48]), 0.02, { alpha: 0.45 })], 'Four-layered apron hanging from the greater curvature of the stomach (“abdominal policeman” — walls off infection). Intraperitoneal vs retroperitoneal organs. Lesser sac via the epiploic foramen (of Winslow; Pringle manoeuvre).', { col: '#f7d58a', mn: 'Retroperitoneal = SAD PUCKER: Suprarenals, Aorta/IVC, Duodenum (2–4), Pancreas (not tail), Ureters, Colon (ascending/descending), Kidneys, Esophagus, Rectum.' });
+note(DG, 'Midgut & hindgut', 'Anal canal & pectinate line', 'Above the pectinate line: endoderm, columnar epithelium, internal haemorrhoids (painless), visceral innervation, drains to internal iliac nodes. Below: ectoderm, stratified squamous, external haemorrhoids (painful), pudendal nerve, superficial inguinal nodes.');
+
+const NX = 'Spinal & autonomic';
+def(NS, NX, 'Phrenic nerves (C3–C5)', 'T', pair(s => TB([[s * 0.18, -0.35, 0.05], [s * 0.2, 0.0, 0.15], [s * 0.25, 0.25, 0.2], [s * 0.35, 0.45, 0.05]], 0.012)), 'Descend on scalenus anterior, pass anterior to the lung roots alongside the pericardium to the diaphragm (sole motor supply). Irritation → referred shoulder-tip pain (C4 dermatome).', { col: NRV, mn: 'C3, 4, 5 keeps the diaphragm alive.' });
+def(NS, NX, 'Sympathetic trunks', 'T', pair(s => TB([[s * 0.11, -0.4, -0.36], [s * 0.12, 0.0, -0.38], [s * 0.12, 0.5, -0.36], [s * 0.1, 0.95, -0.3]], 0.01)), 'Paravertebral ganglionic chains (T1–L2 outflow). Cervical ganglia supply the head; stellate ganglion block. Horner syndrome (ptosis, miosis, anhidrosis) from Pancoast tumour or carotid dissection.', { col: NRV });
+def(NS, NX, 'Cauda equina & lumbar cistern', 'T', [TB([[0, 0.7, -0.45], [0, 0.85, -0.42], [0, 1.0, -0.38]], 0.03), TB([[0.03, 0.7, -0.45], [0.04, 0.95, -0.4], [0.06, 1.05, -0.37]], 0.01), TB([[-0.03, 0.7, -0.45], [-0.04, 0.95, -0.4], [-0.06, 1.05, -0.37]], 0.01)], 'Nerve roots L2–Co below the conus (L1–L2) floating in CSF of the lumbar cistern (ends S2) — where lumbar puncture is done. Cauda equina syndrome: saddle anaesthesia, urinary retention, bilateral leg symptoms = surgical emergency.', { col: NRV });
+def(NS, 'Brain · Lobes & cortex', 'Broca’s & Wernicke’s areas', 'H', [E([0.78, -0.55, 0.45], [0.12, 0.1, 0.12]), E([0.86, -0.7, -0.5], [0.12, 0.12, 0.14])], 'Dominant (usually left) hemisphere. Broca (inferior frontal gyrus, areas 44/45): expressive, non-fluent aphasia with intact comprehension. Wernicke (posterior superior temporal gyrus, area 22): receptive, fluent but meaningless speech. Arcuate fasciculus lesion → conduction aphasia (poor repetition).', { col: '#ff9f40' });
+note(NS, NX, 'Dermatomes (key levels)', 'C5 shoulder badge, C6 thumb, C7 middle finger, C8 little finger, T4 nipple, T10 umbilicus, L1 inguinal ligament, L4 medial malleolus/knee, L5 dorsum of foot & big toe, S1 lateral foot & sole, S2–S4 perineum (saddle).', { mn: 'T4 = Teat pore, T10 = belly butTEN, L1 = IL (inguinal ligament). S1 “stand on it”.' });
+note(NS, NX, 'Deep tendon reflexes', 'Biceps C5–C6, brachioradialis C6, triceps C7, knee L3–L4, ankle S1–S2, plantar (Babinski = UMN lesion). Hyporeflexia = LMN, hyperreflexia/clonus = UMN.', { mn: '“S1-2 buckle my shoe, L3-4 kick the door, C5-6 pick up sticks, C7-8 lay them straight.”' });
+note(NS, NX, 'Spinal cord tracts', 'Dorsal columns (fine touch, vibration, proprioception) cross in the medulla; spinothalamic (pain, temperature) crosses within 1–2 segments; lateral corticospinal (motor) crosses at the medullary pyramids. Brown-Séquard hemisection: ipsilateral weakness & proprioception loss, contralateral pain/temperature loss.');
+note(NS, NX, 'Meninges & CSF', 'Dura, arachnoid, pia. Epidural haematoma (middle meningeal artery, lentiform, lucid interval), subdural (bridging veins, crescent, elderly/alcohol), subarachnoid (berry aneurysm). CSF: clear, protein < 0.45 g/L, glucose ≈ ⅔ of blood glucose.');
+note(NS, NX, 'Autonomic nervous system', 'Sympathetic: thoracolumbar (T1–L2), short pre-/long post-ganglionic, noradrenaline (sweat glands: ACh). Parasympathetic: craniosacral (CN III, VII, IX, X; S2–S4), long pre-/short post-ganglionic, ACh on muscarinic receptors.');
+
+note(EN, 'Glands', 'Hormone axes (HPA / HPT / HPG)', 'Hypothalamus → pituitary → target gland with negative feedback. HPA: CRH → ACTH → cortisol (Cushing, Addison). HPT: TRH → TSH → T3/T4. HPG: GnRH → LH/FSH → sex steroids. Posterior pituitary releases ADH and oxytocin made in the hypothalamus.');
+note(EN, 'Glands', 'Adrenal cortex & medulla', 'Cortex layers GFR: zona Glomerulosa (aldosterone), Fasciculata (cortisol), Reticularis (androgens). Medulla: adrenaline/noradrenaline (phaeochromocytoma).', { mn: 'GFR → “Salt, Sugar, Sex — the deeper you go, the sweeter it gets.”' });
+
+def(LY, 'Nodes & ducts', 'Cisterna chyli', 'T', [E([0.02, 0.62, -0.32], [0.04, 0.07, 0.04])], 'Dilated sac at L1–L2 to the right of the aorta collecting intestinal (chyle) and lumbar lymph trunks; origin of the thoracic duct.', { col: '#62e0cf' });
+def(LY, 'Nodes & ducts', 'Mediastinal & para-aortic nodes', 'T', [E([0, 0.15, -0.1], [0.08, 0.08, 0.08]), ...pair(s => E([s * 0.1, 0.18, -0.05], [0.05, 0.05, 0.05])), ...pair(s => E([s * 0.12, 0.75, -0.28], [0.04, 0.12, 0.04]))], 'Hilar/subcarinal nodes: enlarged in sarcoidosis, TB, lymphoma, lung cancer. Para-aortic nodes receive lymph from the testes/ovaries, kidneys and posterior abdominal wall (testicular cancer spreads here, not to inguinal nodes).', { col: '#62e0cf' });
+
+def(RP, 'Female pelvis (schematic)', 'Breasts & lymph drainage', 'T', pair(s => E([s * 0.42, 0.28, 0.6], [0.2, 0.17, 0.12])), 'Over ribs 2–6 on pectoralis fascia; axillary tail of Spence; suspensory (Cooper’s) ligaments — shortening → peau d’orange / dimpling. 75% of lymph to axillary nodes, rest to internal thoracic (parasternal) nodes. Most cancers in the upper outer quadrant.', { col: '#ff8fcf' });
+def(RP, 'Male pelvis (schematic)', 'Inguinal canal & spermatic cord', 'T', pair(s => TB([[s * 0.4, 1.08, 0.3], [s * 0.25, 1.17, 0.38], [s * 0.15, 1.3, 0.3], [s * 0.12, 1.45, 0.18]], 0.018)), 'Deep ring (lateral to inferior epigastric vessels) → superficial ring above the pubic tubercle. Indirect hernia: lateral to inferior epigastrics through the deep ring (patent processus vaginalis); direct: medial, through Hesselbach’s triangle. Cord contents: vas deferens, testicular artery, pampiniform plexus, genital branch of genitofemoral nerve.', { col: '#ff8fcf', mn: 'Inguinal canal walls “MALT”, 2 each from above clockwise: roof 2 Muscles, anterior 2 Aponeuroses, floor 2 Ligaments, posterior 2 T’s (Transversalis fascia, conjoint Tendon).' });
+note(RP, 'Physiology notes', 'Menstrual cycle', 'Follicular phase (FSH → oestrogen), LH surge → ovulation ~day 14, luteal phase (progesterone from the corpus luteum, fixed ~14 days). hCG from the trophoblast rescues the corpus luteum in pregnancy.');
+
+def(SN, 'Ear', 'External & middle ear', 'H', pair(s => E([s * 1.05, 0.15, -0.25], [0.1, 0.22, 0.12])), 'Auricle, external acoustic meatus, tympanic membrane (cone of light antero-inferior on otoscopy). Middle ear: ossicles, Eustachian tube to the nasopharynx (shorter and more horizontal in children → otitis media). Rinne & Weber tests distinguish conductive from sensorineural loss.', { col: '#ffe08a' });
+note(SN, 'Nose & tongue', 'Smell & taste', 'Olfaction: CN I via the cribriform plate. Taste: anterior ⅔ of tongue — chorda tympani (CN VII); posterior ⅓ — CN IX; epiglottis — CN X. General sensation anterior ⅔: lingual nerve (V3). Kiesselbach’s plexus (Little’s area) = commonest site of epistaxis.');
+
+const IG = 'Integumentary';
+note(IG, 'Skin', 'Skin layers', 'Epidermis (stratum basale, spinosum, granulosum, lucidum on palms/soles, corneum; keratinocytes, melanocytes, Langerhans, Merkel cells) → dermis (papillary, reticular; collagen, vessels, glands) → hypodermis (fat).', { mn: '“Come, Let’s Get Sun Burned” — Corneum, Lucidum, Granulosum, Spinosum, Basale (top → bottom).' });
+note(IG, 'Skin', 'Burns & rule of nines', 'Adult TBSA: head 9%, each arm 9%, front of trunk 18%, back 18%, each leg 18%, perineum 1%. Superficial (epidermis), partial thickness (blisters, painful), full thickness (white/leathery, painless). Parkland: 4 mL × kg × %TBSA in 24 h, half in the first 8 h.');
+def(IG, 'Skin', 'Pressure-injury sites', 'W', both(o => [BL(o.he, 0.07), BL(lb(o.hp, o.kn, 0.02, -0.12), 0.08)]), 'Over bony prominences: sacrum/coccyx, heels, greater trochanters, ischial tuberosities, occiput, elbows. Stage 1 (non-blanching erythema) → stage 4 (bone/tendon exposed). Prevention: 2-hourly repositioning, pressure-relieving mattress, nutrition, Braden score.', { col: '#e8b59a' });
+note(IG, 'Skin appendages', 'Hair, nails & glands', 'Eccrine sweat glands (thermoregulation, sympathetic cholinergic), apocrine (axilla, groin), sebaceous (acne). Nail signs: clubbing (lung cancer, bronchiectasis, IBD, cyanotic heart disease), koilonychia (iron deficiency), splinter haemorrhages (endocarditis).');
+note(IG, 'Skin', 'Skin lesion terms (ABCDE)', 'Macule/patch (flat), papule/plaque (raised), vesicle/bulla (fluid), pustule, nodule. Melanoma warning: Asymmetry, Border irregularity, Colour variation, Diameter > 6 mm, Evolution.');
+}
+const CL = 'Clinical landmarks';
+def(CL, 'Thoracic landmarks', 'Jugular notch (T2–T3)', 'T', [E([0, -0.03, 0.44], [0.04, 0.03, 0.03])], 'Suprasternal notch at the top of the manubrium: palpable midline landmark for tracheal deviation.');
+def(CL, 'Thoracic landmarks', 'Sternal angle (of Louis) – T4/T5', 'T', [E([0, 0.09, 0.53], [0.05, 0.03, 0.03])], 'Manubriosternal junction; level of rib 2, carina, aortic arch beginning/end, azygos arch, T4–T5 disc; start of counting ribs/ICS.');
+def(CL, 'Thoracic landmarks', 'Xiphisternal joint (T9)', 'T', [E([0, 0.43, 0.52], [0.04, 0.03, 0.03])], 'Upper boundary of the epigastrium; CPR hand position is on the lower half of the sternum above it.');
+def(CL, 'Heart auscultation sites', 'Aortic area (R 2nd ICS)', 'T', [E([-0.12, 0.12, 0.54], [0.05, 0.04, 0.03])], 'Right 2nd intercostal space at the sternal border: aortic stenosis murmur radiating to the carotids.', { col: '#ffd36e', mn: 'All Patients Take Meds: Aortic, Pulmonic, Tricuspid, Mitral.' });
+def(CL, 'Heart auscultation sites', 'Pulmonic area (L 2nd ICS)', 'T', [E([0.12, 0.12, 0.54], [0.05, 0.04, 0.03])], 'Left 2nd intercostal space at the sternal border: pulmonary stenosis, ASD flow murmur, split S2.', { col: '#ffd36e' });
+def(CL, 'Heart auscultation sites', 'Erb’s point (L 3rd ICS)', 'T', [E([0.12, 0.2, 0.54], [0.05, 0.04, 0.03])], 'Left 3rd ICS near the sternum: best for hearing S2 and aortic regurgitation murmurs.', { col: '#ffd36e' });
+def(CL, 'Heart auscultation sites', 'Tricuspid area (L 4th–5th ICS)', 'T', [E([0.1, 0.33, 0.52], [0.05, 0.04, 0.03])], 'Lower left sternal border: tricuspid regurgitation, VSD murmur.', { col: '#ffd36e' });
+def(CL, 'Heart auscultation sites', 'Mitral area / apex beat (5th ICS MCL)', 'T', [E([0.45, 0.38, 0.5], [0.05, 0.04, 0.03])], 'Left 5th intercostal space, mid-clavicular line: apex beat, mitral regurgitation (radiates to the axilla) and S3.', { col: '#ffd36e' });
+def(CL, 'Abdominal landmarks', 'Murphy’s point (cholecystitis)', 'T', [E([-0.35, 0.62, 0.52], [0.05, 0.04, 0.03])], 'Right costal margin at the mid-clavicular line (tip of the 9th costal cartilage): inspiratory arrest on palpation.');
+def(CL, 'Abdominal landmarks', 'McBurney’s point (appendicitis)', 'T', [E([-0.38, 0.9, 0.5], [0.05, 0.04, 0.03])], 'One-third of the way from the right ASIS to the umbilicus: maximal tenderness in acute appendicitis.');
+def(CL, 'Abdominal landmarks', 'Transpyloric plane (L1)', 'T', [TB([[-0.9, 0.56, 0.5], [0.9, 0.56, 0.5]], 0.012)], 'Mid-way between the jugular notch and pubic symphysis: pylorus, pancreatic neck, renal hila, gallbladder fundus, SMA origin, conus medullaris, cisterna chyli.');
+def(CL, 'Pulse points', 'Carotid & facial pulses', 'T', pair(s => E([s * 0.14, -0.33, 0.2], [0.03, 0.03, 0.03])), 'Carotid pulse: medial to SCM at the thyroid cartilage level; never palpate both together.');
+def(CL, 'Pulse points', 'Radial & brachial pulses', 'W', both(o => [BL(lb(o.el, o.wr, 0.95, 0.01), 0.05), BL(lb(o.sh, o.el, 0.9, 0.04), 0.05)]), 'Radial pulse at the distal radius lateral to flexor carpi radialis; brachial pulse in the cubital fossa medial to biceps tendon.');
+def(CL, 'Pulse points', 'Femoral pulse (mid-inguinal)', 'W', both(o => [BL(lb(o.hp, o.kn, 0.05, 0.03), 0.06)]), 'Mid-inguinal point (midway ASIS–pubic symphysis): cardiac catheter access; radio-femoral delay in aortic coarctation.');
+def(CL, 'Pulse points', 'Popliteal & foot pulses', 'W', both(o => [BL(lb(o.kn, o.hp, 0.0, 0), 0.05), BL(lb(o.an, o.to, 0.45, 0.01), 0.04)]), 'Popliteal (deep in the fossa, flex the knee); dorsalis pedis lateral to extensor hallucis longus tendon; posterior tibial behind the medial malleolus.');
+
+{
+const G = '#ffd36e', ECG = '#8ef0ff', PRO = '#7fffb0', REG = 'rgba(255,255,255,1)';
+def(CL, 'Abdominal regions', 'Four quadrants (RUQ / LUQ / RLQ / LLQ)', 'T', [TB([[0, 0.5, 0.55], [0, 1.15, 0.5]], 0.008), TB([[-0.75, 0.83, 0.5], [0.75, 0.83, 0.5]], 0.008)], 'Vertical midline and horizontal line through the umbilicus. RUQ: liver, gallbladder, duodenum, right kidney. LUQ: stomach, spleen, pancreas tail. RLQ: appendix, caecum, right ovary. LLQ: sigmoid colon, left ovary.');
+def(CL, 'Abdominal regions', 'Nine regions', 'T', [TB([[-0.42, 0.45, 0.5], [-0.42, 1.18, 0.45]], 0.007), TB([[0.42, 0.45, 0.5], [0.42, 1.18, 0.45]], 0.007), TB([[-0.8, 0.66, 0.48], [0.8, 0.66, 0.48]], 0.007), TB([[-0.8, 1.0, 0.48], [0.8, 1.0, 0.48]], 0.007)], 'Two mid-clavicular lines + subcostal plane (L3) and transtubercular plane (L5): right/left hypochondrium, epigastrium; right/left lumbar (flank), umbilical; right/left iliac fossa, hypogastrium (suprapubic). Used to describe the site of abdominal pain.');
+def(CL, 'Abdominal regions', 'Umbilicus (T10 dermatome)', 'T', [E([0, 0.83, 0.56], [0.03, 0.03, 0.03])], 'Usually at the L3–L4 disc; T10 dermatome — early appendicitis pain is periumbilical (visceral midgut pain) before moving to McBurney’s point. Caput medusae radiate from here in portal hypertension.');
+def(CL, 'Vertebral levels (surface)', 'Inferior angle of scapula (T7)', 'T', pair(s => E([s * 0.55, 0.36, -0.5], [0.04, 0.03, 0.03])), 'With the arms by the side the inferior angle lies at T7 — a posterior landmark for counting ribs and for thoracentesis level.');
+def(CL, 'Vertebral levels (surface)', 'Iliac crests – Tuffier’s line (L4)', 'T', [TB([[-0.6, 0.97, -0.38], [0, 0.95, -0.46], [0.6, 0.97, -0.38]], 0.01)], 'Line joining the highest points of the iliac crests crosses the L4 spinous process / L4–L5 interspace — used to find the lumbar-puncture level.', { col: G });
+def(CL, 'Procedures', 'Lumbar puncture site (L3–L4 / L4–L5)', 'T', [E([0, 0.92, -0.47], [0.035, 0.035, 0.03])], 'Below the conus (L1–L2) so the needle passes between floating roots. Layers: skin, fat, supraspinous & interspinous ligaments, ligamentum flavum (“pop”), epidural space, dura & arachnoid. Check for raised ICP/papilloedema and coagulopathy first.', { col: PRO });
+def(CL, 'Procedures', 'Chest drain – triangle of safety', 'T', pair(s => FL([[s * 0.72, 0.12], [s * 0.95, 0.1], [s * 0.88, 0.42]].map(q => [q[0], q[1], 0.1]), 0.01, { alpha: 0.55 })), 'Bounded by the lateral border of pectoralis major, anterior border of latissimus dorsi and the 5th intercostal space (nipple level), apex below the axilla. Insert just above the rib below to avoid the neurovascular bundle.', { col: PRO });
+def(CL, 'Procedures', 'Needle decompression (tension pneumothorax)', 'T', pair(s => E([s * 0.45, 0.12, 0.53], [0.03, 0.03, 0.03])), '2nd intercostal space, mid-clavicular line (classic site); current ATLS guidance in adults prefers the 4th–5th ICS just anterior to the mid-axillary line. Followed by a chest drain.', { col: PRO });
+def(CL, 'Procedures', 'CPR hand position', 'T', [E([0, 0.36, 0.56], [0.08, 0.05, 0.03])], 'Heel of the hand on the lower half of the sternum, centre of the chest. Adults: 100–120/min, depth 5–6 cm, full recoil, 30:2 without an advanced airway.', { col: PRO });
+def(CL, 'Procedures', 'Pericardiocentesis (subxiphoid)', 'T', [E([0, 0.47, 0.53], [0.03, 0.03, 0.03])], 'Needle between the xiphoid and the left costal margin, aimed toward the left shoulder at ~30–45°. Cardiac tamponade: Beck’s triad (hypotension, raised JVP, muffled heart sounds), pulsus paradoxus.', { col: PRO });
+def(CL, 'Procedures', 'Central venous access sites', 'T', [...pair(s => E([s * 0.15, -0.22, 0.25], [0.03, 0.03, 0.03])), ...pair(s => E([s * 0.35, -0.02, 0.45], [0.03, 0.03, 0.03])), ...pair(s => E([s * 0.32, 1.17, 0.36], [0.03, 0.03, 0.03]))], 'Internal jugular (apex of the triangle between the two heads of SCM, lateral to the carotid), subclavian (below the junction of the middle and medial thirds of the clavicle), femoral (medial to the femoral artery — NAVY). Ultrasound guidance recommended.', { col: PRO });
+def(CL, 'Procedures', 'IM injection sites', 'W', both(o => [BL(lb(o.sh, o.el, 0.2, -0.03), 0.07), BL(lb(o.hp, o.kn, 0.5, -0.1), 0.07)]), 'Deltoid (2–3 finger-breadths below the acromion, avoid the axillary/radial nerves; ≤ 1 mL), vastus lateralis (middle third of the lateral thigh; infants), ventrogluteal (palm on greater trochanter, index finger on ASIS). Avoid the dorsogluteal site — sciatic nerve.', { col: PRO });
+const lead = (n, c, t) => def(CL, 'ECG electrode placement', n, 'T', [E(c, [0.035, 0.035, 0.03])], t, { col: ECG, mn: 'Limb leads: “Ride Your Green Bike” — Red right arm, Yellow left arm, Green left leg, Black right leg (clockwise from right arm).' });
+lead('V1 – 4th ICS, right sternal edge', [-0.1, 0.27, 0.55], 'Septal lead (with V2). Find the sternal angle → 2nd rib → count down to the 4th intercostal space just right of the sternum.');
+lead('V2 – 4th ICS, left sternal edge', [0.1, 0.27, 0.55], 'Septal lead. Mirror of V1 on the left sternal border.');
+lead('V3 – between V2 and V4', [0.27, 0.32, 0.54], 'Anterior lead, midway between V2 and V4.');
+lead('V4 – 5th ICS, mid-clavicular line', [0.45, 0.37, 0.51], 'Anterior lead (apex). V1–V4 changes = anterior/septal MI (LAD).');
+lead('V5 – anterior axillary line', [0.66, 0.37, 0.38], 'Lateral lead, same horizontal level as V4.');
+lead('V6 – mid-axillary line', [0.86, 0.37, 0.12], 'Lateral lead (with I, aVL, V5) — LCx territory. Inferior leads II, III, aVF = RCA territory.');
+}
+//#CORE-END
+
+/* =====================================================================
+   APP: UI, tracking, rendering
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const video = $('#video'), bgc = $('#bg'), glc = $('#gl'), ovc = $('#ov');
+const bgx = bgc.getContext('2d'), ov = ovc.getContext('2d');
+let W = 1280, H = 720;
+const ST = { src: 'cam', view: '2d', study: 'study', style: 'real', labels: true, cap: 9999, opacity: 1, beat: true, silh: true, track: false, zoom: 1, yaw: 0, fit: { head: 1, w: 1, l: 1 }, sel: new Set(), focus: null, reveal: new Set() };
+let SELLIST = [], LABELS = [], ANCH = [], LREG = [], ITEMS = [];
+let rdr = null, scn, cam3, FRM = 0;
+const sysList = [...new Set(CAT.map(s => s.sys))];
+const hasOverlay = s => s.prims.length > 0;
+
+/* ---------- selection / persistence ---------- */
+function saveSel() { try { localStorage.setItem('anat-sel-v1', JSON.stringify([...ST.sel])); } catch (e) {} }
+function loadSel() { try { const a = JSON.parse(localStorage.getItem('anat-sel-v1') || '[]'); a.forEach(i => { if (CAT[i] && hasOverlay(CAT[i])) ST.sel.add(i); }); } catch (e) {} }
+function refreshSel() { SELLIST = [...ST.sel].sort((a, b) => a - b).map(i => CAT[i]); saveSel(); refreshTree(); updateLegend(); }
+function toggle(id, force) { const s = CAT[id]; if (!hasOverlay(s)) return; const on = force !== undefined ? force : !ST.sel.has(id); on ? ST.sel.add(id) : ST.sel.delete(id); }
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const CLIN = /(syndrome|palsy|injur|fractures|fractured|rupture|lesion|disease|cancer|carcinoma|tumou?r|stroke|aneurysm|hernia|itis\b|itis |sign\b|sign |test\b|emergency|haemorrhage|hemorrhage|thrombosis|ischaemi|failure|block|deficien|dislocat|varices|jaundice|weakness|→|tamponade|aphasia|ataxia|biopsy|used for|access|graft|injection|site for|surgery|surgical)/i;
+function splitInfo(t) {
+  const parts = String(t).split(/(?<=[.;])\s+(?=[A-Z0-9(“"])/), keep = [], pearl = [];
+  for (const raw of parts) { const x = raw.trim(); if (!x) continue; (CLIN.test(x) && keep.length ? pearl : keep).push(x.replace(/;$/, '.')); }
+  return { keep: keep.join(' '), pearl: pearl.join(' ') };
+}
+function setFocus(s) {
+  ST.focus = s; const el = $('#info'), sp = splitInfo(s.i), sib = CAT.filter(x => x.grp === s.grp && x.sys === s.sys && x !== s).slice(0, 14), ov = hasOverlay(s), on = ST.sel.has(s.id);
+  el.innerHTML = `<div class="ih"><div class="sw" style="background:${s.col}"></div><div><h3>${esc(s.name)}${ov ? '' : '<span class="tag">notes only</span>'}${s.ins ? '<span class="tag">magnified detail</span>' : ''}</h3>${s.lat ? `<div class="lat">${esc(s.lat)}</div>` : ''}<div class="path">${esc(s.sys)} › ${esc(s.grp)}</div></div></div>`
+    + `<div class="body">${esc(sp.keep)}</div>`
+    + (sp.pearl ? `<div class="pearl"><b>Clinical pearl</b>${esc(sp.pearl)}</div>` : '')
+    + (s.mn ? `<div class="mn"><b>Memory aid</b>${esc(s.mn)}</div>` : '')
+    + `<div class="acts">${ov ? `<button class="btn2" type="button" data-fa="tog">${on ? '✓ Shown on body – hide' : '+ Show on body'}</button>` : ''}<button class="btn2" type="button" data-fa="grp">Show whole group</button></div>`
+    + (sib.length ? `<div class="rel"><span>Related in ${esc(s.grp)}</span><div>${sib.map(x => `<button class="chip" type="button" data-rel="${x.id}">${esc(x.name)}</button>`).join('')}</div></div>` : '');
+  document.querySelectorAll('.row.focus').forEach(r => r.classList.remove('focus'));
+  const r = document.querySelector(`.row[data-id="${s.id}"]`); if (r) r.classList.add('focus');
+}
+$('#info').addEventListener('click', e => {
+  const s = ST.focus; if (!s) return;
+  const rel = e.target.closest('[data-rel]'); if (rel) { setFocus(CAT[+rel.dataset.rel]); return; }
+  const a = e.target.closest('[data-fa]'); if (!a) return;
+  if (a.dataset.fa === 'tog') toggle(s.id);
+  else CAT.filter(x => x.grp === s.grp && x.sys === s.sys && hasOverlay(x)).forEach(x => toggle(x.id, true));
+  refreshSel(); setFocus(s);
+});
+function updateLegend() {
+  const el = $('#legend'); if (!el) return; const m = new Map();
+  for (const s of SELLIST) if (!m.has(s.sys)) m.set(s.sys, SYSCOL[s.sys]);
+  el.innerHTML = m.size ? '<span style="font-weight:600">Colour key:</span>' + [...m].map(([k, c]) => `<span><i style="background:${c}"></i>${esc(k)}</span>`).join('') + '<span><i style="background:#ff4a58"></i>Artery</span><span><i style="background:#5b86ff"></i>Vein</span><span><i style="background:#ffd24a"></i>Nerve</span>' : '<span>No structures selected — choose a quick set or tick items on the left.</span>';
+}
+(function theme() {
+  const root = document.documentElement; let t = 'light'; try { t = localStorage.getItem('anat-theme') || 'light'; } catch (e) {}
+  root.dataset.theme = t;
+  const b = $('#themeBtn'); if (b) b.addEventListener('click', () => { t = root.dataset.theme === 'dark' ? 'light' : 'dark'; root.dataset.theme = t; try { localStorage.setItem('anat-theme', t); } catch (e) {} });
+})();
+
+/* ---------- tree ---------- */
+const QUICK = [['Whole skeleton', s => s.sys === 'Skeletal'], ['Skull', s => s.grp.startsWith('Skull')], ['Spine', s => s.grp.startsWith('Spine')], ['Thorax', s => s.grp.startsWith('Thorax') || s.grp === 'Shoulder girdle'], ['Pelvis', s => s.grp === 'Pelvis'], ['Arm & forearm', s => s.grp === 'Upper limb'], ['Hand', s => s.grp.startsWith('Hand')], ['Leg', s => s.grp === 'Lower limb'], ['Foot', s => s.grp.startsWith('Foot')], ['Heart in situ', s => s.grp.startsWith('Heart · In situ')], ['Heart detail', s => s.grp.startsWith('Heart ·') && s.fr === 'HEART'], ['Coronaries', s => s.grp === 'Heart · Coronary circulation (detail)'], ['Valves', s => s.grp.startsWith('Heart · Valves')], ['Kidney detail', s => s.grp === UI], ['Nephron', s => s.grp === UN], ['Lungs', s => s.sys === 'Respiratory'], ['Abdominal organs', s => s.sys === 'Digestive' && s.fr === 'T'], ['Brain', s => s.grp.startsWith('Brain')], ['Muscles', s => s.sys === 'Muscular'], ['Vessels', s => s.grp.startsWith('Vessels') || s.grp.startsWith('Heart · In situ')], ['Nerves', s => s.grp === NP], ['Joints', s => s.sys === 'Joints'], ['Landmarks', s => s.sys === 'Clinical landmarks' && !/Procedures|ECG/.test(s.grp)], ['ECG leads', s => s.grp === 'ECG electrode placement'], ['Procedures', s => s.grp === 'Procedures'], ['Abdo regions', s => s.grp === 'Abdominal regions'], ['Gut blood supply', s => s.grp === 'Vessels · Abdominal aorta branches' || s.name.startsWith('Aorta')], ['Endocrine', s => s.sys === 'Endocrine'], ['Lymph nodes', s => s.sys === 'Lymphatic']];
+function buildTree() {
+  const q = $('#quick'); q.innerHTML = '';
+  QUICK.forEach(([n, f], i) => { const b = document.createElement('button'); b.className = 'chip'; b.type = 'button'; b.textContent = n; b.dataset.q = i; q.appendChild(b); });
+  const root = $('#tree'); let html = '';
+  for (const sys of sysList) {
+    const items = CAT.filter(s => s.sys === sys), grps = [...new Set(items.map(s => s.grp))];
+    html += `<details class="sys" data-sys="${sys}" style="--sc:${SYSCOL[sys]}"><summary><i style="background:${SYSCOL[sys]}"></i>${sys}<em>${items.length}</em><button type="button" class="mini" data-act="sys" data-v="${sys}">select all</button></summary>`;
+    for (const g of grps) {
+      const gi = items.filter(s => s.grp === g);
+      html += `<details class="grp" data-grp="${g}"><summary>${g}<button type="button" class="mini" data-act="grp" data-v="${g}" data-s="${sys}">all</button></summary>`;
+      for (const s of gi) html += `<div class="row${hasOverlay(s) ? '' : ' info'}" tabindex="0" role="treeitem" data-id="${s.id}" data-t="${(s.name + ' ' + s.lat + ' ' + g + ' ' + sys).toLowerCase()}"><span class="ck"></span>${s.name}${hasOverlay(s) ? '' : '<small>notes</small>'}${s.ins ? '<small>detail</small>' : ''}</div>`;
+      html += '</details>';
+    }
+    html += '</details>';
+  }
+  root.innerHTML = html;
+  const cc = $('#catCount'); if (cc) cc.textContent = CAT.length + ' items · ' + sysList.length + ' systems';
+}
+function refreshTree() {
+  document.querySelectorAll('.row').forEach(r => r.classList.toggle('on', ST.sel.has(+r.dataset.id)));
+  $('#selCount').textContent = ST.sel.size + ' selected';
+  document.querySelectorAll('.chip').forEach(c => { const f = QUICK[c.dataset.q][1], arr = CAT.filter(s => hasOverlay(s) && f(s)); c.classList.toggle('on', arr.length > 0 && arr.every(s => ST.sel.has(s.id))); });
+}
+function applyFilter() {
+  const t = $('#q').value.trim().toLowerCase(), words = t.split(/\s+/).filter(Boolean);
+  document.querySelectorAll('.row').forEach(r => { r.hidden = !!words.length && !words.every(w => r.dataset.t.includes(w)); });
+  document.querySelectorAll('details.grp').forEach(g => { const any = [...g.querySelectorAll('.row')].some(r => !r.hidden); g.hidden = !any; if (words.length) g.open = any; });
+  document.querySelectorAll('details.sys').forEach(s => { const any = [...s.querySelectorAll('.row')].some(r => !r.hidden); s.hidden = !any; if (words.length) s.open = any; });
+}
+$('#tree').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (b) {
+    e.preventDefault(); e.stopPropagation();
+    const arr = b.dataset.act === 'sys' ? CAT.filter(s => s.sys === b.dataset.v) : CAT.filter(s => s.sys === b.dataset.s && s.grp === b.dataset.v);
+    const vis = arr.filter(s => hasOverlay(s) && !document.querySelector(`.row[data-id="${s.id}"]`).hidden), all = vis.every(s => ST.sel.has(s.id));
+    vis.forEach(s => toggle(s.id, !all)); refreshSel(); return;
+  }
+  const r = e.target.closest('.row'); if (!r) return;
+  const s = CAT[+r.dataset.id]; toggle(s.id); refreshSel(); setFocus(s);
+});
+$('#tree').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('row')) { e.preventDefault(); e.target.click(); } });
+$('#quick').addEventListener('click', e => {
+  const c = e.target.closest('.chip'); if (!c) return;
+  const arr = CAT.filter(s => hasOverlay(s) && QUICK[c.dataset.q][1](s)), all = arr.every(s => ST.sel.has(s.id));
+  arr.forEach(s => toggle(s.id, !all)); refreshSel();
+});
+$('#q').addEventListener('input', applyFilter);
+$('#selResults').addEventListener('click', () => { document.querySelectorAll('.row:not([hidden])').forEach(r => toggle(+r.dataset.id, true)); refreshSel(); });
+$('#clearSel').addEventListener('click', () => { ST.sel.clear(); refreshSel(); });
+addEventListener('keydown', e => { if (e.key === '/' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); $('#q').focus(); } if (e.key === 'Escape') { $('#q').value = ''; applyFilter(); $('#q').blur(); } });
+
+/* ---------- toolbar ---------- */
+function seg(id, fn) { document.querySelectorAll(`#${id} button`).forEach(b => b.addEventListener('click', () => { if (b.disabled) return; document.querySelectorAll(`#${id} button`).forEach(x => x.classList.toggle('on', x === b)); fn(b.dataset.v); })); }
+function seg_set(id, v) { document.querySelectorAll(`#${id} button`).forEach(x => x.classList.toggle('on', x.dataset.v === v)); }
+let looping = false;
+function startLoop() { if (!looping) { looping = true; requestAnimationFrame(loop); } }
+seg('srcSeg', v => {
+  if (v === 'man') startMannequin();
+  else if (cam.ready) { ST.src = 'cam'; $('#overlay').style.display = 'none'; resizeAll(video.videoWidth || 1280, video.videoHeight || 720); $('#stage').style.aspectRatio = `${W} / ${H}`; }
+  else { $('#overlay').style.display = 'flex'; seg_set('srcSeg', ST.src); }
+});
+seg('viewSeg', v => { ST.view = v; $('#gl').style.display = v === '3d' ? 'block' : 'none'; if (v === '3d') { init3D(); resize3D(); } });
+seg('modeSeg', v => { ST.study = v; ST.reveal.clear(); $('#quiz').hidden = v !== 'quiz'; if (v === 'quiz') quizNext(); });
+seg('styleSeg', v => { ST.style = v; restyle3D(); });
+$('#cLabels').addEventListener('change', e => ST.labels = e.target.checked);
+$('#cap').addEventListener('change', e => ST.cap = +e.target.value);
+$('#opa').addEventListener('input', e => ST.opacity = +e.target.value / 100);
+$('#cBeat').addEventListener('change', e => ST.beat = e.target.checked);
+$('#cSil').addEventListener('change', e => ST.silh = e.target.checked);
+$('#cTrack').addEventListener('change', e => ST.track = e.target.checked);
+const fitMap = [['fHead', v => ST.fit.head = v / 100], ['fW', v => ST.fit.w = v / 100], ['fL', v => ST.fit.l = v / 100], ['fZoom', v => ST.zoom = v / 100], ['fYaw', v => ST.yaw = v * Math.PI / 180]];
+fitMap.forEach(([id, fn]) => $('#' + id).addEventListener('input', e => fn(+e.target.value)));
+$('#fReset').addEventListener('click', () => fitMap.forEach(([id, fn]) => { const el = $('#' + id); el.value = id === 'fYaw' ? 0 : 100; fn(+el.value); }));
+if (!THREE) { $('#b3d').disabled = true; $('#b3d').title = '3D needs three.js (run download_assets.py or go online)'; }
+$('#gl').style.display = 'none';
+
+/* ---------- mannequin ---------- */
+const MAN = [[0, .115, .08], [.015, .095, .07], [.032, .095, .06], [.05, .098, .04], [-.015, .095, .07], [-.032, .095, .06], [-.05, .098, .04], [.08, .105, -.05], [-.08, .105, -.05], [.025, .145, .07], [-.025, .145, .07], [.19, .30, 0], [-.19, .30, 0], [.245, .60, 0], [-.245, .60, 0], [.31, .86, .02], [-.31, .86, .02], [.33, .92, .02], [-.33, .92, .02], [.32, .94, .04], [-.32, .94, .04], [.28, .90, .05], [-.28, .90, .05], [.115, .84, 0], [-.115, .84, 0], [.125, 1.25, .02], [-.125, 1.25, .02], [.13, 1.68, 0], [-.13, 1.68, 0], [.13, 1.73, -.07], [-.13, 1.73, -.07], [.14, 1.76, .10], [-.14, 1.76, .10]];
+const HT = [[0, 0], [.40, .30], [.58, .58], [.72, .80], [.84, .98], [.30, .92], [.32, 1.30], [.33, 1.52], [.34, 1.70], [0, 1.0], [0, 1.42], [0, 1.68], [0, 1.88], [-.26, .95], [-.28, 1.32], [-.29, 1.54], [-.30, 1.70], [-.50, .84], [-.55, 1.12], [-.57, 1.28], [-.58, 1.42]];
+function buildMannequin(ZK) {
+  const K = 360 * ST.zoom, c = Math.cos(ST.yaw), s = Math.sin(ST.yaw);
+  const tr = ([x, y, z]) => [W / 2 + (x * c + z * s) * K, H / 2 + (y - 0.9) * K, (-x * s + z * c) * K * ZK];
+  CUR.p = MAN.map(tr); CUR.pv = MAN.map(() => 1);
+  CUR.hands = [15, 16].map((w, k) => { const side = k === 0 ? 1 : -1, wm = MAN[w], pts = HT.map(([nx, fy]) => tr([wm[0] + side * nx * 0.085, wm[1] + fy * 0.085, wm[2]])); return { pts, S: V.len(V.sub(pts[0], pts[9])) }; });
+  CUR.face = null;
+}
+function startMannequin() { ST.src = 'man'; seg_set('srcSeg', 'man'); $('#overlay').style.display = 'none'; resizeAll(1280, 720); $('#stage').style.aspectRatio = '16 / 9'; $('#status').textContent = 'Mannequin mode · drag to turn it · use Fit ▸ zoom'; startLoop(); }
+$('#manBtn').addEventListener('click', startMannequin);
+let drag = null;
+$('#stage').addEventListener('pointerdown', e => { if (e.target.closest('#overlay')) return; drag = { x: e.clientX, y: e.clientY, yaw: ST.yaw, moved: false }; $('#stage').setPointerCapture(e.pointerId); });
+$('#stage').addEventListener('pointermove', e => { if (!drag) return; const dx = e.clientX - drag.x; if (Math.abs(dx) > 4) drag.moved = true; if (drag.moved && ST.src === 'man') { ST.yaw = drag.yaw + dx * 0.012; $('#fYaw').value = Math.round(((ST.yaw * 180 / Math.PI + 540) % 360) - 180); } });
+$('#stage').addEventListener('pointercancel', () => { drag = null; });
+$('#stage').addEventListener('pointerup', e => { if (e.target.closest('#overlay')) return; const d = drag; drag = null; if (d && !d.moved) stageClick(e); });
+
+/* ---------- camera + MediaPipe ---------- */
+const cam = { ready: false };
+const MP_VER = '0.10.14', CDN = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
+const URLS = { face: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', hand: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', pose: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task' };
+const exists = async u => { try { return (await fetch(u, { method: 'HEAD' })).ok; } catch { return false; } };
+const abs = u => new URL(u, location.href).href;
+let faceLm = null, handLm = null, poseLm = null;
+async function loadModels() {
+  const local = await exists('./vendor/tasks-vision/vision_bundle.mjs');
+  const mod = await import(local ? abs('./vendor/tasks-vision/vision_bundle.mjs') : `${CDN}/vision_bundle.mjs`);
+  const fileset = await mod.FilesetResolver.forVisionTasks(local ? abs('./vendor/tasks-vision/wasm') : `${CDN}/wasm`);
+  const pick = async (f, u) => (await exists('./models/' + f)) ? abs('./models/' + f) : u;
+  const make = async (cls, path, extra) => { for (const delegate of ['GPU', 'CPU']) { try { return await cls.createFromOptions(fileset, { baseOptions: { modelAssetPath: path, delegate }, runningMode: 'VIDEO', ...extra }); } catch (e) { if (delegate === 'CPU') throw e; } } };
+  faceLm = await make(mod.FaceLandmarker, await pick('face_landmarker.task', URLS.face), { numFaces: 1 });
+  poseLm = await make(mod.PoseLandmarker, await pick('pose_landmarker_full.task', URLS.pose), { numPoses: 1, outputSegmentationMasks: true });
+  handLm = await make(mod.HandLandmarker, await pick('hand_landmarker.task', URLS.hand), { numHands: 2 });
+}
+function smooth(prev, cur, a) {
+  if (!prev || prev.length !== cur.length) return cur.map(q => ({ x: q.x, y: q.y, z: q.z, v: q.visibility ?? 1 }));
+  return cur.map((q, i) => { const p = prev[i], d = Math.hypot(q.x - p.x, q.y - p.y), k = Math.min(1, a + d * 25); return { x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k, z: p.z + (q.z - p.z) * k, v: p.v + ((q.visibility ?? 1) - p.v) * 0.5 }; });
+}
+let pose = null, face = null, hands = {}, poseSeen = 0, faceSeen = 0, lastT = -1, maskOK = false;
+const poseIn = document.createElement('canvas'), poseCtx = poseIn.getContext('2d');
+const maskDark = document.createElement('canvas'), maskGlow = document.createElement('canvas');
+let maskImgD = null, maskImgG = null;
+function updateMask(m) {
+  const w = m.width, h = m.height, f = m.getAsFloat32Array();
+  if (maskDark.width !== w || maskDark.height !== h || !maskImgD) { for (const c of [maskDark, maskGlow]) { c.width = w; c.height = h; } maskImgD = maskDark.getContext('2d').createImageData(w, h); maskImgG = maskGlow.getContext('2d').createImageData(w, h); }
+  const d = maskImgD.data, g = maskImgG.data;
+  for (let i = 0, j = 0; i < f.length; i++, j += 4) { const a = f[i] * 255; d[j] = 3; d[j + 1] = 10; d[j + 2] = 30; d[j + 3] = a * 0.6; g[j] = 60; g[j + 1] = 130; g[j + 2] = 255; g[j + 3] = a; }
+  maskDark.getContext('2d').putImageData(maskImgD, 0, 0); maskGlow.getContext('2d').putImageData(maskImgG, 0, 0);
+}
+function detect(now) {
+  if (poseIn.width !== 512) { poseIn.width = 512; poseIn.height = Math.round(512 * H / W); }
+  poseCtx.drawImage(video, 0, 0, poseIn.width, poseIn.height);
+  const pr = poseLm.detectForVideo(poseIn, now);
+  if (pr.landmarks && pr.landmarks.length) { pose = smooth(pose, pr.landmarks[0], 0.5); poseSeen = now; } else if (now - poseSeen > 400) pose = null;
+  if (pr.segmentationMasks && pr.segmentationMasks.length) { try { updateMask(pr.segmentationMasks[0]); maskOK = !!pose; } finally { pr.segmentationMasks.forEach(m => m.close && m.close()); } } else maskOK = false;
+  const fr = faceLm.detectForVideo(video, now);
+  if (fr.faceLandmarks && fr.faceLandmarks.length) { face = smooth(face, fr.faceLandmarks[0], 0.45); faceSeen = now; } else if (now - faceSeen > 350) face = null;
+  const hr = handLm.detectForVideo(video, now), next = {};
+  (hr.landmarks || []).forEach((h, i) => { const k = (hr.handednesses?.[i]?.[0]?.categoryName || 'h') + i; next[k] = smooth(hands[k], h, 0.55); });
+  hands = next;
+}
+$('#startBtn').addEventListener('click', async () => {
+  const btn = $('#startBtn'), err = $('#err'); btn.disabled = true; err.textContent = '';
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera API not available. Open via http://localhost (not file://).');
+    $('#status').textContent = 'Starting camera…';
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, audio: false });
+    video.srcObject = stream; await video.play();
+    resizeAll(video.videoWidth || 1280, video.videoHeight || 720); $('#stage').style.aspectRatio = `${W} / ${H}`;
+    $('#status').textContent = 'Loading tracking models…';
+    await loadModels();
+    cam.ready = true; ST.src = 'cam'; seg_set('srcSeg', 'cam'); $('#overlay').style.display = 'none';
+    $('#status').textContent = 'Tracking ready · step back to show your whole body'; startLoop();
+  } catch (e) { console.error(e); err.textContent = (e.message || String(e)) + '  — you can still use the mannequin.'; btn.disabled = false; $('#status').textContent = 'Error'; }
+});
+function resizeAll(w, h) { W = w; H = h; for (const c of [bgc, glc, ovc]) { c.width = w; c.height = h; } resize3D(); }
+resizeAll(W, H);
+
+/* ---------- per-frame data (CUR) ---------- */
+function buildCUR() {
+  const ZK = ST.view === '3d' ? 0.7 : 0;
+  if (ST.src === 'man') buildMannequin(ZK);
+  else {
+    const mir = q => [(1 - q.x) * W, q.y * H, -q.z * W * ZK];
+    CUR.p = pose ? pose.map(mir) : null; CUR.pv = pose ? pose.map(q => q.v) : [];
+    CUR.hands = Object.values(hands).map(h => { const pts = h.map(mir); return { pts, S: V.len(V.sub(pts[0], pts[9])) }; }).filter(h => h.S > 10);
+    CUR.face = face ? face.map(mir) : null;
+  }
+  const p = CUR.p, vis = i => p && CUR.pv[i] > 0.5, fr = CUR.fr = {};
+  CUR.U = 0; CUR.mid = null; CUR.cx = null; CUR.jaw = 0;
+  if (vis(11) && vis(12)) {
+    const X0 = V.mul(V.sub(p[11], p[12]), 0.5), U = V.len(X0), mS = V.mid(p[11], p[12]);
+    if (U > 12) {
+      CUR.U = U; CUR.mid = mS; CUR.cx = mS[0];
+      let Y;
+      if (vis(23) && vis(24)) Y = V.sub(V.mid(p[23], p[24]), mS);
+      else { let n = [-X0[1], X0[0], 0]; if (n[1] < 0) n = [-n[0], -n[1], 0]; Y = V.mul(V.norm(n), U * 2.7); }
+      fr.T = mkFrame(mS, V.mul(X0, ST.fit.w), V.mul(Y, ST.fit.l));
+      for (const k in INS) {
+        const d = INS[k], c = L2W(fr.T, [d.at[0], d.at[1], 0]), m = U * d.sc * 1.05;
+        c[0] = Math.max(m, Math.min(W - m, c[0])); c[1] = Math.max(m, Math.min(H - m, c[1]));
+        const ex = V.mul(V.norm(X0), U * d.sc), ey = V.mul(V.norm(Y), U * d.sc);
+        fr[k] = mkFrame(c, ex, ey); fr[k].tr = L2W(fr.T, [d.tr[0], d.tr[1], 0.2]);
+      }
+    }
+  } else if (vis(23) && vis(24)) { CUR.U = V.len(V.sub(p[23], p[24])) * 0.85; CUR.mid = V.mid(p[23], p[24]); CUR.cx = CUR.mid[0]; }
+  const hk = ST.fit.head;
+  if (CUR.face) {
+    const f = CUR.face, O = f[168], X = V.mul(V.sub(f[454], f[234]), 0.5), Y = V.sub(O, f[10]);
+    if (V.len(X) > 10 && V.len(Y) > 6) {
+      fr.H = mkFrame(O, V.mul(X, hk), V.mul(Y, hk));
+      CUR.jaw = Math.max(0, Math.min(0.65, (V.len(V.sub(f[13], f[14])) / V.len(Y) - 0.03) / 0.9));
+      if (CUR.cx == null) CUR.cx = O[0];
+    }
+  } else if (vis(2) && vis(5) && vis(0)) {
+    const ear = vis(7) && vis(8), X = ear ? V.mul(V.sub(p[7], p[8]), 0.5 * 0.95) : V.mul(V.sub(p[2], p[5]), 1.15);
+    const eyeM = V.mid(p[2], p[5]), mouth = vis(9) && vis(10) ? V.mid(p[9], p[10]) : p[0];
+    if (V.len(X) > 5) { const Y = V.mul(V.norm(V.sub(mouth, eyeM)), V.len(X) * 0.93), O = V.sub(eyeM, V.mul(Y, 0.3)); fr.H = mkFrame(O, V.mul(X, hk), V.mul(Y, hk)); if (CUR.cx == null) CUR.cx = O[0]; }
+  }
+  if (CUR.cx == null && CUR.hands.length) CUR.cx = CUR.hands[0].pts[9][0];
+}
+
+/* ---------- prim resolution ---------- */
+let beatK = 1;
+const ev = x => (typeof x === 'function' ? x() : x);
+function resolve(s, p, f) {
+  if (p.k === 's' || p.k === 'm') { const a = ev(p.a), b = ev(p.b); if (!a || !b) return null; return { k: p.k, a, b, w: p.w * CUR.unit, anchor: V.mid(a, b) }; }
+  if (p.k === 'v') { const pts = p.p.map(ev); if (pts.some(q => !q)) return null; return { k: 'v', pts, w: p.w * CUR.unit, anchor: pts[pts.length >> 1] }; }
+  if (p.k === 'o') { const c = ev(p.c); if (!c) return null; return { k: 'o', c, w: p.w * CUR.unit, anchor: c }; }
+  /* local prims */
+  const jw = p.j ? CUR.jaw : 0, tf = q => L2W(f, jw ? jawRot(q, jw) : q);
+  if (p.k === 'e') {
+    const k = p.b && ST.beat ? beatK : 1, [cx, cy, cz] = p.c, [rx, ry] = [p.r[0] * k, p.r[1] * k], rot = p.rot || 0, co = Math.cos(rot), si = Math.sin(rot), pts = [];
+    for (let i = 0; i < 26; i++) { const t = i / 26 * TAU, ex = rx * Math.cos(t), ey = ry * Math.sin(t); pts.push(tf([cx + ex * co - ey * si, cy + ex * si + ey * co, cz])); }
+    return { k: 'e', pts, anchor: tf(p.c) };
+  }
+  if (p.k === 't') { const pts = p.p.map(tf); return { k: 't', pts, w: Math.max(1.6, p.r * 2 * f.sc), anchor: pts[pts.length >> 1] }; }
+  if (p.k === 'f') { const pts = p.p.map(tf); const c = pts.reduce((a, q) => V.add(a, q), [0, 0, 0]); return { k: 'f', pts, anchor: V.mul(c, 1 / pts.length) }; }
+  return null;
+}
+function collect() {
+  ITEMS = []; LABELS = []; ANCH = [];
+  const seenIns = new Set();
+  for (const s of SELLIST) {
+    const lm = s.fr === 'W' || s.fr === 'HAND', insts = s.fr === 'HAND' ? CUR.hands : [null];
+    insts.forEach((hd, ii) => {
+      let f = null;
+      if (hd) { CUR.hc = hd.pts; CUR.unit = hd.S; } else CUR.unit = CUR.U;
+      if (!lm) { f = CUR.fr[s.fr]; if (!f) return; } else if (!(CUR.unit > 5)) return;
+      let anchor = null;
+      s.prims.forEach((p, pi) => { const it = resolve(s, p, f); if (!it) return; it.s = s; it.p = p; it.f = f; it.key = s.id + '|' + ii + '|' + pi; ITEMS.push(it); if (!anchor || pi === s.lab) anchor = it.anchor; });
+      if (anchor && ii === 0) { LABELS.push({ s, x: anchor[0], y: anchor[1] }); }
+      if (anchor) ANCH.push({ s, x: anchor[0], y: anchor[1] });
+      if (s.ins && f && !seenIns.has(s.fr)) { seenIns.add(s.fr); ITEMS.push({ k: 'conn', f, s, a: f.O, b: f.tr, key: 'c' + s.fr }); }
+    });
+  }
+}
+
+/* ---------- 2D drawing ---------- */
+const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+function polyPath(c, pts, close = true) { c.beginPath(); pts.forEach((q, i) => i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1])); if (close) c.closePath(); }
+function smoothLine(c, pts) { c.beginPath(); c.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length - 1; i++) { const m = [(pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2]; c.quadraticCurveTo(pts[i][0], pts[i][1], m[0], m[1]); } const l = pts[pts.length - 1]; c.lineTo(l[0], l[1]); }
+function bonePoly(a, b, w) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L, r = w / 2, ang = Math.atan2(dy, dx), L1 = [], R1 = [];
+  for (let k = 0; k <= 10; k++) { const t = k / 10, wd = r * (0.55 + 0.45 * Math.pow(Math.abs(2 * t - 1), 3)), x = a[0] + dx * t, y = a[1] + dy * t; L1.push([x + nx * wd, y + ny * wd]); R1.push([x - nx * wd, y - ny * wd]); }
+  const cap = (c, a0, rr) => { const o = []; for (let k = 1; k < 6; k++) { const t = a0 - Math.PI * k / 6; o.push([c[0] + Math.cos(t) * rr, c[1] + Math.sin(t) * rr]); } return o; };
+  return [...L1, ...cap(b, ang + Math.PI / 2, r * 0.9), ...R1.reverse(), ...cap(a, ang - Math.PI / 2, r)];
+}
+function draw2DFlat(c, it, hot, dim) {
+  const s = it.s, col = s.rgb, A = ST.opacity * (dim ? 0.35 : 1) * ((it.p && it.p.alpha) || 1), bone = s.sys === 'Skeletal';
+  c.save(); c.lineJoin = 'round'; c.lineCap = 'round';
+  c.shadowColor = rgba(col, 0.9); c.shadowBlur = hot ? 18 : 8;
+  const lw = hot ? 2.6 : 1.4;
+  switch (it.k) {
+    case 'e': polyPath(c, it.pts); c.fillStyle = rgba(col, (bone ? 0.34 : 0.26) * A); c.fill(); c.strokeStyle = rgba(col, 0.95 * A); c.lineWidth = lw; c.stroke(); break;
+    case 'f': polyPath(c, it.pts); c.fillStyle = rgba(col, 0.26 * A); c.fill(); c.strokeStyle = rgba(col, 0.95 * A); c.lineWidth = lw; c.stroke(); break;
+    case 't': smoothLine(c, it.pts); c.strokeStyle = rgba(col, 0.55 * A); c.lineWidth = it.w; c.stroke(); c.shadowBlur = 0; c.strokeStyle = rgba([255, 255, 255], 0.55 * A); c.lineWidth = Math.max(0.8, it.w * 0.18); c.stroke(); break;
+    case 'v': smoothLine(c, it.pts); c.strokeStyle = rgba(col, 0.9 * A); c.lineWidth = Math.max(1.8, it.w); c.stroke(); break;
+    case 'o': c.beginPath(); c.arc(it.c[0], it.c[1], Math.max(2, it.w / 2), 0, TAU); c.fillStyle = rgba(col, 0.45 * A); c.fill(); c.strokeStyle = rgba(col, 0.95 * A); c.lineWidth = lw; c.stroke(); break;
+    case 's': {
+      const pts = bonePoly(it.a, it.b, Math.max(3, it.w)), m = V.mid(it.a, it.b), dx = it.b[0] - it.a[0], dy = it.b[1] - it.a[1], L = Math.hypot(dx, dy) || 1, nx = -dy / L * it.w * 0.5, ny = dx / L * it.w * 0.5;
+      polyPath(c, pts); const g = c.createLinearGradient(m[0] + nx, m[1] + ny, m[0] - nx, m[1] - ny);
+      g.addColorStop(0, rgba(col, 0.75 * A)); g.addColorStop(0.5, rgba(col, 0.2 * A)); g.addColorStop(1, rgba(col, 0.75 * A));
+      c.fillStyle = g; c.fill(); c.strokeStyle = rgba([245, 250, 255], 0.9 * A); c.lineWidth = hot ? 2.4 : 1; c.stroke(); break;
+    }
+    case 'm': {
+      const a = it.a, b = it.b, dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L, Lp = [], Rp = [];
+      for (let k = 0; k <= 10; k++) { const t = k / 10, wd = it.w / 2 * Math.max(0.12, Math.pow(Math.sin(Math.PI * t), 0.6)), x = a[0] + dx * t, y = a[1] + dy * t; Lp.push([x + nx * wd, y + ny * wd]); Rp.push([x - nx * wd, y - ny * wd]); }
+      polyPath(c, [...Lp, ...Rp.reverse()]); c.fillStyle = rgba(col, 0.38 * A); c.fill(); c.strokeStyle = rgba(col, 0.9 * A); c.lineWidth = lw; c.stroke();
+      c.shadowBlur = 0; c.strokeStyle = rgba([255, 190, 195], 0.45 * A); c.lineWidth = 0.8;
+      for (let q = -2; q <= 2; q++) { c.beginPath(); for (let k = 0; k <= 10; k++) { const t = k / 10, wd = it.w / 2 * Math.max(0.12, Math.pow(Math.sin(Math.PI * t), 0.6)) * q * 0.35; const x = a[0] + dx * t + nx * wd, y = a[1] + dy * t + ny * wd; k ? c.lineTo(x, y) : c.moveTo(x, y); } c.stroke(); }
+      break;
+    }
+    case 'conn': { const a = it.a, b = it.b; c.setLineDash([6, 6]); c.strokeStyle = 'rgba(255,255,255,0.5)'; c.lineWidth = 1; c.shadowBlur = 0; c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke(); c.setLineDash([]); c.beginPath(); c.arc(b[0], b[1], 4, 0, TAU); c.fillStyle = 'rgba(255,255,255,0.9)'; c.fill(); break; }
+  }
+  c.restore();
+}
+/* ---------- 2D "3D Real" renderer: volumetric shading, key light from top-left ---------- */
+const LIX = -0.6, LIY = -0.8;
+const mix = (c, t, k) => [0, 1, 2].map(i => Math.round(c[i] + (t[i] - c[i]) * k));
+const lit = (c, k) => mix(c, [255, 255, 255], k), drk = (c, k) => mix(c, [0, 0, 0], k);
+function bbox(pts) { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const q of pts) { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; } return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, r: Math.max(2, Math.max(x1 - x0, y1 - y0) / 2) }; }
+function sphereGrad(c, cx, cy, r, col, A) {
+  const g = c.createRadialGradient(cx + LIX * r * 0.4, cy + LIY * r * 0.4, r * 0.05, cx, cy, r * 1.15);
+  g.addColorStop(0, rgba(lit(col, 0.75), 0.98 * A)); g.addColorStop(0.25, rgba(lit(col, 0.2), 0.95 * A));
+  g.addColorStop(0.7, rgba(col, 0.92 * A)); g.addColorStop(1, rgba(drk(col, 0.65), 0.95 * A)); return g;
+}
+function cylGrad(c, a, b, w, col, A) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; let nx = -dy / L, ny = dx / L;
+  if (nx * LIX + ny * LIY < 0) { nx = -nx; ny = -ny; }
+  const m = V.mid(a, b), h = w / 2, g = c.createLinearGradient(m[0] + nx * h, m[1] + ny * h, m[0] - nx * h, m[1] - ny * h);
+  g.addColorStop(0, rgba(lit(col, 0.25), 0.95 * A)); g.addColorStop(0.22, rgba(lit(col, 0.7), 0.98 * A));
+  g.addColorStop(0.45, rgba(col, 0.95 * A)); g.addColorStop(0.85, rgba(drk(col, 0.45), 0.95 * A)); g.addColorStop(1, rgba(drk(col, 0.7), 0.95 * A));
+  return { g, nx, ny };
+}
+function dropShadow(c, on) { if (on) { c.shadowColor = 'rgba(0,0,0,0.55)'; c.shadowBlur = 10; c.shadowOffsetX = 4; c.shadowOffsetY = 6; } else { c.shadowColor = 'transparent'; c.shadowBlur = 0; c.shadowOffsetX = 0; c.shadowOffsetY = 0; } }
+function tube3D(c, pts, w, col, A) {
+  const off = (k, f) => { c.save(); c.translate(LIX * w * k, LIY * w * k); f(); c.restore(); };
+  smoothLine(c, pts); dropShadow(c, true); c.strokeStyle = rgba(drk(col, 0.6), 0.95 * A); c.lineWidth = w; c.stroke(); dropShadow(c, false);
+  off(0.08, () => { smoothLine(c, pts); c.strokeStyle = rgba(col, A); c.lineWidth = w * 0.72; c.stroke(); });
+  off(0.18, () => { smoothLine(c, pts); c.strokeStyle = rgba(lit(col, 0.45), 0.9 * A); c.lineWidth = w * 0.35; c.stroke(); });
+  off(0.26, () => { smoothLine(c, pts); c.strokeStyle = rgba([255, 255, 255], 0.7 * A); c.lineWidth = Math.max(0.6, w * 0.1); c.stroke(); });
+}
+function glare(c, cx, cy, r, A) { const g = c.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, `rgba(255,255,255,${0.75 * A})`); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.beginPath(); c.arc(cx, cy, r, 0, TAU); c.fill(); }
+function hotRim(c, path, hot, A) { if (!hot) return; c.save(); path(); c.shadowColor = '#ffe27a'; c.shadowBlur = 16; c.strokeStyle = `rgba(255,226,122,${0.95 * A})`; c.lineWidth = 2.6; c.stroke(); c.restore(); }
+function draw2D(c, it, hot, dim) {
+  if (ST.style !== 'real') return draw2DFlat(c, it, hot, dim);
+  const s = it.s, col = s.rgb, A = ST.opacity * (dim ? 0.35 : 1) * ((it.p && it.p.alpha) || 1), bone = s.sys === 'Skeletal', edge = rgba(drk(col, 0.55), 0.9 * A);
+  c.save(); c.lineJoin = 'round'; c.lineCap = 'round';
+  switch (it.k) {
+    case 'e': case 'f': {
+      const b = bbox(it.pts); polyPath(c, it.pts); dropShadow(c, true); c.fillStyle = sphereGrad(c, b.cx, b.cy, b.r, col, A * (it.k === 'f' ? 0.9 : 1)); c.fill(); dropShadow(c, false);
+      c.save(); polyPath(c, it.pts); c.clip(); glare(c, b.cx + LIX * b.r * 0.45, b.cy + LIY * b.r * 0.45, b.r * 0.35, A * (bone ? 0.55 : 0.8));
+      c.strokeStyle = rgba(drk(col, 0.7), 0.35 * A); c.lineWidth = Math.max(2, b.r * 0.18); c.translate(-LIX * b.r * 0.06, -LIY * b.r * 0.06); polyPath(c, it.pts); c.stroke(); c.restore();
+      polyPath(c, it.pts); c.strokeStyle = edge; c.lineWidth = 1; c.stroke();
+      hotRim(c, () => polyPath(c, it.pts), hot, A); break;
+    }
+    case 'o': {
+      const r = Math.max(2.5, it.w / 2); c.beginPath(); c.arc(it.c[0], it.c[1], r, 0, TAU); dropShadow(c, true); c.fillStyle = sphereGrad(c, it.c[0], it.c[1], r, col, A); c.fill(); dropShadow(c, false);
+      glare(c, it.c[0] + LIX * r * 0.4, it.c[1] + LIY * r * 0.4, r * 0.4, A); c.beginPath(); c.arc(it.c[0], it.c[1], r, 0, TAU); c.strokeStyle = edge; c.lineWidth = 0.8; c.stroke();
+      hotRim(c, () => { c.beginPath(); c.arc(it.c[0], it.c[1], r, 0, TAU); }, hot, A); break;
+    }
+    case 's': {
+      const w = Math.max(3, it.w), pts = bonePoly(it.a, it.b, w), { g, nx, ny } = cylGrad(c, it.a, it.b, w * 0.8, col, A);
+      polyPath(c, pts); dropShadow(c, true); c.fillStyle = g; c.fill(); dropShadow(c, false);
+      c.save(); polyPath(c, pts); c.clip();
+      for (const e of [it.a, it.b]) { const r = w * 0.55, eg = c.createRadialGradient(e[0] + LIX * r * 0.4, e[1] + LIY * r * 0.4, 0, e[0], e[1], r); eg.addColorStop(0, rgba(lit(col, 0.8), 0.9 * A)); eg.addColorStop(1, rgba(col, 0)); c.fillStyle = eg; c.beginPath(); c.arc(e[0], e[1], r, 0, TAU); c.fill(); }
+      const h = w * 0.22; c.strokeStyle = `rgba(255,255,255,${0.55 * A})`; c.lineWidth = Math.max(0.8, w * 0.07);
+      c.beginPath(); c.moveTo(it.a[0] + (it.b[0] - it.a[0]) * 0.2 + nx * h, it.a[1] + (it.b[1] - it.a[1]) * 0.2 + ny * h); c.lineTo(it.a[0] + (it.b[0] - it.a[0]) * 0.8 + nx * h, it.a[1] + (it.b[1] - it.a[1]) * 0.8 + ny * h); c.stroke(); c.restore();
+      polyPath(c, pts); c.strokeStyle = edge; c.lineWidth = 1; c.stroke();
+      hotRim(c, () => polyPath(c, pts), hot, A); break;
+    }
+    case 'm': {
+      const a = it.a, b = it.b, dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L, Lp = [], Rp = [];
+      const wd = t => it.w / 2 * Math.max(0.12, Math.pow(Math.sin(Math.PI * t), 0.6));
+      for (let k = 0; k <= 12; k++) { const t = k / 12, x = a[0] + dx * t, y = a[1] + dy * t; Lp.push([x + nx * wd(t), y + ny * wd(t)]); Rp.push([x - nx * wd(t), y - ny * wd(t)]); }
+      const shape = () => polyPath(c, [...Lp, ...Rp.slice().reverse()]), cg = cylGrad(c, a, b, it.w, col, A);
+      shape(); dropShadow(c, true); c.fillStyle = cg.g; c.fill(); dropShadow(c, false);
+      c.save(); shape(); c.clip(); c.lineWidth = 0.7;
+      for (let q = -4; q <= 4; q++) { c.strokeStyle = rgba(q * (cg.nx * nx + cg.ny * ny) > 0 ? lit(col, 0.5) : drk(col, 0.5), 0.45 * A); c.beginPath(); for (let k = 0; k <= 12; k++) { const t = k / 12, o = wd(t) * q * 0.22, x = a[0] + dx * t + nx * o, y = a[1] + dy * t + ny * o; k ? c.lineTo(x, y) : c.moveTo(x, y); } c.stroke(); }
+      for (const e of [a, b]) { c.fillStyle = `rgba(240,235,225,${0.75 * A})`; c.beginPath(); c.arc(e[0], e[1], Math.max(1.5, it.w * 0.1), 0, TAU); c.fill(); }
+      c.restore(); shape(); c.strokeStyle = edge; c.lineWidth = 0.9; c.stroke();
+      hotRim(c, shape, hot, A); break;
+    }
+    case 't': tube3D(c, it.pts, Math.max(2, it.w), col, A); if (hot) { smoothLine(c, it.pts); c.shadowColor = '#ffe27a'; c.shadowBlur = 14; c.strokeStyle = `rgba(255,226,122,${0.6 * A})`; c.lineWidth = 1.5; c.stroke(); } break;
+    case 'v': tube3D(c, it.pts, Math.max(2.4, it.w * 1.15), col, A); if (hot) { smoothLine(c, it.pts); c.shadowColor = '#ffe27a'; c.shadowBlur = 14; c.strokeStyle = `rgba(255,226,122,${0.6 * A})`; c.lineWidth = 1.5; c.stroke(); } break;
+    case 'conn': c.restore(); return draw2DFlat(c, it, hot, dim);
+  }
+  c.restore();
+}
+function drawInsetFrames(c) {
+  for (const k in INS) {
+    const f = CUR.fr[k]; if (!f || !SELLIST.some(s => s.fr === k)) continue;
+    const r = f.sc * 1.2; c.save(); c.fillStyle = 'rgba(2,8,26,0.55)'; c.strokeStyle = 'rgba(143,193,255,0.45)'; c.lineWidth = 1; c.beginPath(); c.roundRect ? c.roundRect(f.O[0] - r, f.O[1] - r, r * 2, r * 2, 14) : c.rect(f.O[0] - r, f.O[1] - r, r * 2, r * 2); c.fill(); c.stroke();
+    c.fillStyle = 'rgba(190,210,255,0.8)'; c.font = `600 ${Math.max(10, Math.round(H / 62))}px "Segoe UI",sans-serif`; c.textAlign = 'center'; c.textBaseline = 'top';
+    c.textBaseline = 'bottom'; c.fillText({ HEART: 'HEART · magnified', KID: 'LEFT KIDNEY · coronal section', NEPH: 'NEPHRON · schematic' }[k], f.O[0], f.O[1] - r - 3); c.restore();
+  }
+}
+
+/* ---------- background ---------- */
+function drawBG() {
+  bgx.setTransform(1, 0, 0, 1, 0, 0); bgx.filter = 'none'; bgx.clearRect(0, 0, W, H);
+  if (ST.src === 'cam' && video.readyState >= 2) {
+    bgx.save(); bgx.setTransform(-1, 0, 0, 1, W, 0); bgx.filter = 'saturate(.8) brightness(.8)'; bgx.drawImage(video, 0, 0, W, H); bgx.restore();
+    if (ST.silh && maskOK && maskDark.width) { bgx.save(); bgx.setTransform(-W / maskDark.width, 0, 0, H / maskDark.height, W, 0); bgx.filter = 'blur(4px)'; bgx.drawImage(maskGlow, 0, 0); bgx.filter = 'blur(1px)'; bgx.drawImage(maskDark, 0, 0); bgx.restore(); }
+  } else {
+    const g = bgx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, H); g.addColorStop(0, '#0e1a33'); g.addColorStop(1, '#03060c'); bgx.fillStyle = g; bgx.fillRect(0, 0, W, H);
+    bgx.strokeStyle = 'rgba(90,130,200,0.08)'; bgx.lineWidth = 1; for (let x = 0; x < W; x += 60) { bgx.beginPath(); bgx.moveTo(x, 0); bgx.lineTo(x, H); bgx.stroke(); } for (let y = 0; y < H; y += 60) { bgx.beginPath(); bgx.moveTo(0, y); bgx.lineTo(W, y); bgx.stroke(); }
+    if (ST.silh && CUR.p) {
+      const P = CUR.p; bgx.save(); bgx.lineCap = 'round'; bgx.lineJoin = 'round'; bgx.shadowColor = 'rgba(60,130,255,0.8)'; bgx.shadowBlur = 16; bgx.strokeStyle = 'rgba(30,70,150,0.42)';
+      const U = CUR.U || 60, line = (a, b, w) => { bgx.lineWidth = w; bgx.beginPath(); bgx.moveTo(P[a][0], P[a][1]); bgx.lineTo(P[b][0], P[b][1]); bgx.stroke(); };
+      const mS = V.mid(P[11], P[12]), mH = V.mid(P[23], P[24]);
+      bgx.lineWidth = U * 1.9; bgx.beginPath(); bgx.moveTo(mS[0], mS[1] + U * 0.2); bgx.lineTo(mH[0], mH[1] + U * 0.2); bgx.stroke();
+      [[11, 13], [13, 15], [12, 14], [14, 16]].forEach(([a, b]) => line(a, b, U * 0.42)); [[23, 25], [25, 27], [24, 26], [26, 28]].forEach(([a, b]) => line(a, b, U * 0.6)); line(27, 31, U * 0.3); line(28, 32, U * 0.3);
+      const hc = V.mid(P[7], P[8]); bgx.beginPath(); bgx.ellipse(hc[0], hc[1] - U * 0.1, U * 0.55, U * 0.72, 0, 0, TAU); bgx.stroke(); bgx.lineWidth = U * 0.4; bgx.beginPath(); bgx.moveTo(hc[0], hc[1] + U * 0.4); bgx.lineTo(mS[0], mS[1]); bgx.stroke(); bgx.restore();
+    }
+  }
+  const vg = bgx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.5)'); bgx.fillStyle = vg; bgx.fillRect(0, 0, W, H);
+}
+
+/* ---------- labels ---------- */
+/* ---------- labels: every selected name, multi-column, no overlaps ---------- */
+function bodyBounds() {
+  let x0 = Infinity, x1 = -Infinity; const add = q => { if (q && isFinite(q[0])) { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; } };
+  for (const it of ITEMS) { if (it.k === 'conn') continue; if (it.pts) it.pts.forEach(add); add(it.a); add(it.b); add(it.c); if (it.anchor) add(it.anchor); }
+  for (const k in INS) { const f = CUR.fr[k]; if (f && SELLIST.some(s => s.fr === k)) { const r = f.sc * 1.2; add([f.O[0] - r]); add([f.O[0] + r]); } }
+  if (CUR.p) for (const i of [11, 12, 15, 16, 23, 24]) if (CUR.pv[i] > 0.5) add(CUR.p[i]);
+  return isFinite(x0) ? [x0, x1] : [W * 0.4, W * 0.6];
+}
+function packY(col, gap, top, bot) {
+  col.sort((a, b) => a.y - b.y); let y = -Infinity;
+  for (const it of col) { it.ty = Math.max(it.y, y + gap, top); y = it.ty; }
+  y = Infinity; for (let i = col.length - 1; i >= 0; i--) { col[i].ty = Math.min(col[i].ty, y - gap, bot); y = col[i].ty; }
+  y = -Infinity; for (const it of col) { it.ty = Math.max(it.ty, y + gap, top); y = it.ty; }
+}
+function layoutSide(items, side, edge, space, fs, maxW) {
+  if (!items.length) return true;
+  const gap = fs * 1.55, top = fs + 6, bot = H - fs * 2.2, per = Math.max(1, Math.floor((bot - top) / gap) + 1);
+  const cols = Math.ceil(items.length / per), colW = maxW + 22;
+  if (cols * colW > space && cols > 1) return false;
+  const C = Array.from({ length: cols }, () => []);
+  items.sort((a, b) => a.y - b.y).forEach((it, i) => C[i % cols].push(it));
+  C.forEach((col, ci) => { packY(col, gap, top, bot); const x = side < 0 ? edge - 18 - ci * colW : edge + 18 + ci * colW; col.forEach(it => { it.lx = x; it.al = side < 0 ? 'right' : 'left'; }); });
+  return true;
+}
+function drawLabels() {
+  LREG = [];
+  if (!ST.labels || ST.study === 'quiz') return;
+  let labs = LABELS.filter(l => isFinite(l.x) && isFinite(l.y));
+  if (!labs.length) return;
+  const total = labs.length, cap = Math.min(ST.cap, total);
+  if (labs.length > cap) { const f = labs.find(l => l.s === ST.focus), step = labs.length / cap; labs = Array.from({ length: cap }, (_, i) => labs[Math.floor(i * step)]); if (f && !labs.includes(f)) labs[0] = f; }
+  const [bx0, bx1] = bodyBounds(), cx = (bx0 + bx1) / 2, spL = Math.max(0, bx0 - 8), spR = Math.max(0, W - bx1 - 8);
+  let fs = Math.max(10, Math.round(H / 60)), items, ok = false, shown = labs;
+  for (let tries = 0; tries < 40 && !ok; tries++) {
+    ov.font = `600 ${fs}px "Segoe UI",system-ui,sans-serif`;
+    items = shown.map(l => { const hid = ST.study === 'recall' && !ST.reveal.has(l.s.id) && l.s !== ST.focus; return { s: l.s, x: l.x, y: l.y, hid, t: hid ? '#' + (SELLIST.indexOf(l.s) + 1) + ' · ?' : l.s.name }; });
+    items.forEach(i => i.w = ov.measureText(i.t).width);
+    const maxW = Math.max(40, ...items.map(i => i.w));
+    const tol = Math.max(12, (bx1 - bx0) * 0.12);
+    let L = items.filter(i => i.x < cx - tol), R = items.filter(i => i.x > cx + tol);
+    const M = items.filter(i => Math.abs(i.x - cx) <= tol).sort((a, b) => a.y - b.y);
+    for (const it of M) (L.length <= R.length ? L : R).push(it);
+    const bal = (A2, B2) => { A2.sort((a, b) => Math.abs(a.x - cx) - Math.abs(b.x - cx)); while (A2.length - B2.length > 1) { const it = A2.shift(); if (Math.abs(it.x - cx) > (bx1 - bx0) * 0.35) { A2.unshift(it); break; } B2.push(it); } };
+    if (spL >= maxW + 30 && spR >= maxW + 30) { if (R.length > L.length + 1) bal(R, L); else if (L.length > R.length + 1) bal(L, R); }
+    if (spL < maxW + 30) { R = R.concat(L); L = []; } else if (spR < maxW + 30) { L = L.concat(R); R = []; }
+    ok = layoutSide(L, -1, bx0, spL, fs, maxW) && layoutSide(R, 1, bx1, spR, fs, maxW);
+    if (!ok) { if (fs > 9) fs--; else shown = shown.filter((_, i) => i % 6 !== 5 || shown[i].s === ST.focus); }
+  }
+  ov.save(); ov.font = `600 ${fs}px "Segoe UI",system-ui,sans-serif`; ov.lineJoin = 'round';
+  for (const it of items) { const hot = it.s === ST.focus, near = it.al === 'right' ? it.lx + 4 : it.lx - 4;
+    ov.beginPath(); ov.moveTo(it.x, it.y); ov.lineTo(near, it.ty - fs * 0.45); ov.strokeStyle = hot ? 'rgba(255,226,122,0.95)' : 'rgba(200,220,255,0.5)'; ov.lineWidth = hot ? 1.5 : 0.8; ov.stroke(); }
+  for (const it of items) { const hot = it.s === ST.focus; ov.beginPath(); ov.arc(it.x, it.y, hot ? 3.6 : 2.4, 0, TAU); ov.fillStyle = hot ? '#ffe27a' : '#ffffff'; ov.fill(); ov.strokeStyle = 'rgba(0,0,0,0.7)'; ov.lineWidth = 1; ov.stroke(); }
+  for (const it of items) {
+    const hot = it.s === ST.focus, x0 = it.al === 'right' ? it.lx - it.w : it.lx, y0 = it.ty - fs - 3, h = fs + 6;
+    ov.beginPath(); ov.roundRect ? ov.roundRect(x0 - 5, y0, it.w + 10, h, h / 2) : ov.rect(x0 - 5, y0, it.w + 10, h);
+    ov.fillStyle = hot ? 'rgba(60,45,0,0.92)' : 'rgba(6,14,34,0.86)'; ov.fill();
+    ov.strokeStyle = hot ? '#ffe27a' : rgba(it.s.rgb, 0.85); ov.lineWidth = 1; ov.stroke();
+    ov.textAlign = 'left'; ov.textBaseline = 'middle'; ov.fillStyle = hot ? '#ffe27a' : (it.hid ? 'rgba(160,190,255,0.95)' : '#f2f6ff'); ov.fillText(it.t, x0, y0 + h / 2 + 0.5);
+    LREG.push({ s: it.s, x0: x0 - 5, x1: x0 + it.w + 5, y0, y1: y0 + h });
+  }
+  ov.restore();
+  if (total > items.length) { ov.save(); ov.fillStyle = 'rgba(255,226,122,0.95)'; ov.font = `${Math.max(11, fs)}px sans-serif`; ov.textAlign = 'left'; ov.textBaseline = 'alphabetic'; ov.fillText(`Showing ${items.length} of ${total} names – ${ST.cap < total ? 'set Labels “All”' : 'screen is full'} or narrow the selection`, 12, H - 10); ov.restore(); }
+}
+function drawTracking() {
+  ov.save();
+  if (CUR.p) { ov.strokeStyle = 'rgba(255,90,255,0.8)'; ov.fillStyle = '#ff5aff'; for (let i = 0; i < 33; i++) if (CUR.pv[i] > 0.5) { ov.beginPath(); ov.arc(CUR.p[i][0], CUR.p[i][1], 3, 0, TAU); ov.fill(); } }
+  if (CUR.face) { ov.fillStyle = 'rgba(0,255,200,0.7)'; for (const q of CUR.face) ov.fillRect(q[0] - 1, q[1] - 1, 2, 2); }
+  ov.fillStyle = '#ffdc00'; for (const h of CUR.hands) for (const q of h.pts) { ov.beginPath(); ov.arc(q[0], q[1], 2.5, 0, TAU); ov.fill(); }
+  ov.restore();
+}
+
+/* ---------- three.js ---------- */
+const POOL = new Map(), MATC = new Map();
+let SPH, BONEG, CYL;
+function init3D() {
+  if (!THREE || rdr) return;
+  rdr = new THREE.WebGLRenderer({ canvas: glc, alpha: true, antialias: true, premultipliedAlpha: false });
+  rdr.setPixelRatio(1); rdr.setClearColor(0x000000, 0); scn = new THREE.Scene();
+  cam3 = new THREE.OrthographicCamera(0, W, 0, -H, -1e5, 1e5); cam3.position.z = 5e4;
+  scn.add(new THREE.AmbientLight(0x8fa8d8, 0.6)); const k = new THREE.DirectionalLight(0xffffff, 1.2); k.position.set(-0.5, 0.8, 1); scn.add(k); const f = new THREE.DirectionalLight(0x6fa0ff, 0.45); f.position.set(0.7, -0.3, 0.6); scn.add(f);
+  SPH = new THREE.SphereGeometry(1, 40, 28); CYL = new THREE.CylinderGeometry(0.5, 0.5, 1, 18).translate(0, 0.5, 0);
+  scn.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a2418, 0.55)); const rim = new THREE.DirectionalLight(0x9fc4ff, 0.9); rim.position.set(0.2, 0.3, -1); scn.add(rim);
+  rdr.toneMapping = THREE.ACESFilmicToneMapping; rdr.toneMappingExposure = 1.15; rdr.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  const prof = [[0, 0], [0.3, 0.015], [0.48, 0.05], [0.5, 0.09], [0.42, 0.15], [0.3, 0.25], [0.26, 0.5], [0.3, 0.75], [0.42, 0.85], [0.5, 0.91], [0.48, 0.95], [0.3, 0.985], [0, 1]].map(([r, y]) => new THREE.Vector2(Math.max(0.001, r), y));
+  BONEG = new THREE.LatheGeometry(prof, 28); BONEG.computeVertexNormals(); resize3D();
+}
+function resize3D() { if (!rdr) return; rdr.setSize(W, H, false); cam3.left = 0; cam3.right = W; cam3.top = 0; cam3.bottom = -H; cam3.updateProjectionMatrix(); }
+function mats(s, hot) {
+  const key = (hot ? 'hot' : s.col) + s.sys, hit = MATC.get(key); if (hit) return hit;
+  const col = new THREE.Color(hot ? '#ffe27a' : s.col), [p, k, b] = s.sys === 'Skeletal' ? [2.0, 1.5, 0.1] : [1.4, 1.0, 0.16];
+  const xray = new THREE.ShaderMaterial({ uniforms: { c: { value: col }, p: { value: p }, k: { value: k }, b: { value: b }, o: { value: 1 } },
+    vertexShader: 'varying vec3 vN; void main(){ vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: 'uniform vec3 c; uniform float p; uniform float k; uniform float b; uniform float o; varying vec3 vN; void main(){ float f = pow(1.0 - abs(normalize(vN).z), p); float a = clamp(b + f * k, 0.0, 1.0) * o; gl_FragColor = vec4(c * a, a); }',
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const solid = new THREE.MeshStandardMaterial({ color: col, flatShading: true, roughness: 0.55, metalness: 0.08, side: THREE.DoubleSide, transparent: true, opacity: 0.88, emissive: col.clone().multiplyScalar(0.14) });
+  const wire = new THREE.MeshBasicMaterial({ color: col, wireframe: true, transparent: true, opacity: 0.75, depthWrite: false });
+  const isBone = s.sys === 'Skeletal', base = hot ? col : col.clone().lerp(new THREE.Color(isBone ? '#f3ead8' : '#ffffff'), isBone ? 0.35 : 0.05);
+  const real = new THREE.MeshPhysicalMaterial({ color: base, roughness: isBone ? 0.6 : 0.38, metalness: 0, clearcoat: isBone ? 0.15 : 0.7, clearcoatRoughness: 0.35, sheen: isBone ? 0 : 0.6, sheenColor: col.clone().lerp(new THREE.Color('#ffffff'), 0.5), side: THREE.DoubleSide, transparent: true, opacity: 1, emissive: hot ? col.clone().multiplyScalar(0.35) : col.clone().multiplyScalar(0.05) });
+  const m = { xray, solid, wire, real }; MATC.set(key, m); return m;
+}
+const styleMat = (s, hot) => { const m = mats(s, hot); return ST.style === 'real' ? m.real : ST.style === 'xray' ? m.xray : ST.style === 'mesh' ? m.solid : m.wire; };
+function restyle3D() { for (const e of POOL.values()) e.ms.forEach(m => { m.material = styleMat(e.s, e.hot); }); }
+function geoFor(p) {
+  if (p._g) return p._g; let g;
+  if (p.k === 't') g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(p.p.map(q => new THREE.Vector3(q[0], q[1], q[2]))), Math.max(16, p.p.length * 10), p.r, 16, false);
+  else { const sh = new THREE.Shape(); p.p.forEach((q, i) => i ? sh.lineTo(q[0], q[1]) : sh.moveTo(q[0], q[1])); g = new THREE.ExtrudeGeometry(sh, { depth: p.d || 0.05, bevelEnabled: true, bevelThickness: (p.d || 0.05) * 0.5, bevelSize: (p.d || 0.05) * 0.4, bevelSegments: 4, curveSegments: 16 }); g.computeVertexNormals(); g.translate(0, 0, (p.p[0][2] || 0) - (p.d || 0.05) / 2); }
+  return (p._g = g);
+}
+const T3 = a => new THREE.Vector3(a[0], -a[1], a[2]);
+function frameM(f) { const m = new THREE.Matrix4(); m.makeBasis(new THREE.Vector3(f.X[0], -f.X[1], f.X[2]), new THREE.Vector3(f.Y[0], -f.Y[1], f.Y[2]), new THREE.Vector3(f.Z[0], -f.Z[1], f.Z[2])); m.setPosition(f.O[0], -f.O[1], f.O[2]); return m; }
+function jawM(a) { const m = new THREE.Matrix4().makeTranslation(JAW_PIV[0], JAW_PIV[1], JAW_PIV[2]); m.multiply(new THREE.Matrix4().makeRotationX(-a)).multiply(new THREE.Matrix4().makeTranslation(-JAW_PIV[0], -JAW_PIV[1], -JAW_PIV[2])); return m; }
+function build3D(it) {
+  const ms = [], mk = g => { const m = new THREE.Mesh(g, styleMat(it.s, false)); m.matrixAutoUpdate = false; m.frustumCulled = false; scn.add(m); ms.push(m); return m; };
+  switch (it.k) { case 'e': case 'm': case 'o': mk(SPH); break; case 't': case 'f': mk(geoFor(it.p)); break; case 's': mk(BONEG); break; case 'v': for (let i = 0; i < it.pts.length - 1; i++) mk(CYL); for (let i = 1; i < it.pts.length - 1; i++) mk(SPH); break; }
+  return { ms, s: it.s, hot: false, seen: 0 };
+}
+const _u = THREE ? new THREE.Vector3(0, 1, 0) : null, _sc = THREE ? new THREE.Vector3() : null, _d = THREE ? new THREE.Vector3() : null, _qq = THREE ? new THREE.Quaternion() : null, _mm = THREE ? new THREE.Vector3() : null;
+function segM(m, a, b, w, fus) {
+  _d.subVectors(b, a); const L = _d.length(); if (L < 1e-3) { m.visible = false; return; }
+  _qq.setFromUnitVectors(_u, _d.multiplyScalar(1 / L));
+  if (fus) { _sc.set(w / 2, L / 2, w / 2 * 0.8); _mm.addVectors(a, b).multiplyScalar(0.5); m.matrix.compose(_mm, _qq, _sc); } else { _sc.set(w, L, w); m.matrix.compose(a, _qq, _sc); }
+  m.visible = true;
+}
+function render3D(hotSet, only, none) {
+  if (!rdr) return; FRM++;
+  for (const m of MATC.values()) { m.xray.uniforms.o.value = ST.opacity; m.solid.opacity = 0.88 * ST.opacity; m.wire.opacity = 0.75 * ST.opacity; m.real.opacity = ST.opacity; m.real.depthWrite = ST.opacity > 0.97; }
+  const FM = {};
+  for (const it of ITEMS) {
+    if (none || it.k === 'conn' || (only && it.s !== only)) continue;
+    let ent = POOL.get(it.key); if (!ent) { ent = build3D(it); POOL.set(it.key, ent); }
+    ent.seen = FRM; const hot = hotSet.has(it.s);
+    if (ent.hot !== hot) { ent.hot = hot; ent.ms.forEach(m => m.material = styleMat(it.s, hot)); }
+    const m0 = ent.ms[0]; m0.visible = true;
+    if (it.k === 'e' || it.k === 't' || it.k === 'f') {
+      const key = it.f.O.join(','); const fm = FM[key] || (FM[key] = frameM(it.f)); const M = m0.matrix.copy(fm), p = it.p;
+      if (p.j && CUR.jaw) M.multiply(jawM(CUR.jaw));
+      if (it.k === 'e') { const k = p.b && ST.beat ? beatK : 1; M.multiply(new THREE.Matrix4().compose(new THREE.Vector3(p.c[0], p.c[1], p.c[2]), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), p.rot || 0), new THREE.Vector3(p.r[0] * k, p.r[1] * k, p.r[2] * k))); }
+    } else if (it.k === 's') segM(m0, T3(it.a), T3(it.b), it.w, false);
+    else if (it.k === 'm') segM(m0, T3(it.a), T3(it.b), it.w, true);
+    else if (it.k === 'o') { _sc.set(it.w / 2, it.w / 2, it.w / 2); m0.matrix.compose(T3(it.c), _qq.identity(), _sc); }
+    else if (it.k === 'v') { const n = it.pts.length - 1, w = Math.max(2, it.w); for (let i = 0; i < n; i++) segM(ent.ms[i], T3(it.pts[i]), T3(it.pts[i + 1]), w, false); for (let i = 1; i < n; i++) { const j = ent.ms[n + i - 1]; if (!j) continue; _sc.set(w / 2, w / 2, w / 2); j.matrix.compose(T3(it.pts[i]), _qq.identity(), _sc); j.visible = true; } }
+  }
+  for (const e of POOL.values()) if (e.seen !== FRM) e.ms.forEach(m => m.visible = false);
+  rdr.render(scn, cam3);
+}
+
+/* ---------- quiz ---------- */
+const Z2D = { f: 0, e: 1, s: 2, o: 3, m: 4, t: 5, v: 6, conn: 9 };
+const Q = { type: 'id', target: null, score: 0, total: 0, streak: 0, done: false, last: null };
+function quizUI() {
+  const el = $('#quiz');
+  if (!Q.target) { el.innerHTML = `<div class="q">Quiz mode</div><div>Select some structures (e.g. “Hand” or “Heart detail”), bring them into view, then press Start.</div><div class="meta"><button class="btn2" id="qStart" type="button">Start</button></div>`; $('#qStart').onclick = quizNext; return; }
+  let h = `<div class="q">${Q.type === 'id' ? 'Name the highlighted structure' : 'Tap the <b>' + Q.target.name + '</b> on the body'}</div>`;
+  if (Q.type === 'id') h += `<div class="opts">${Q.opts.map((o, i) => `<button type="button" data-i="${i}">${o.name}</button>`).join('')}</div>`;
+  h += `<div class="meta"><div class="seg" id="qType"><button type="button" data-v="id" class="${Q.type === 'id' ? 'on' : ''}">Identify</button><button type="button" data-v="loc" class="${Q.type === 'loc' ? 'on' : ''}">Locate</button></div><span class="fb" id="qFb"></span><span style="margin-left:auto">Score ${Q.score}/${Q.total} · streak ${Q.streak}</span><button class="btn2" id="qNext" type="button">Next ▶</button></div>`;
+  el.innerHTML = h;
+  el.querySelectorAll('.opts button').forEach(b => b.onclick = () => quizAnswer(Q.opts[+b.dataset.i], b));
+  $('#qNext').onclick = quizNext; $('#qType').querySelectorAll('button').forEach(b => b.onclick = () => { Q.type = b.dataset.v; quizNext(); });
+}
+function quizNext() {
+  const pool = [...new Map(ANCH.map(a => [a.s.id, a.s])).values()].filter(s => s !== Q.last || ANCH.length < 2);
+  if (!pool.length) { Q.target = null; quizUI(); return; }
+  Q.target = pool[Math.floor(Math.random() * pool.length)]; Q.last = Q.target; Q.done = false;
+  const near = CAT.filter(s => s !== Q.target && s.name !== Q.target.name && (s.grp === Q.target.grp)), far = CAT.filter(s => s !== Q.target && s.sys === Q.target.sys && s.grp !== Q.target.grp);
+  const sh = a => a.map(x => [Math.random(), x]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+  Q.opts = sh([Q.target, ...sh(near).slice(0, 3), ...sh(far)].slice(0, 4).concat([])); if (Q.opts.length < 4) Q.opts = sh([...Q.opts, ...sh(CAT.filter(s => !Q.opts.includes(s))).slice(0, 4 - Q.opts.length)]);
+  ST.focus = null; quizUI();
+}
+function quizAnswer(s, btn) {
+  if (Q.done) return; Q.done = true; Q.total++; const ok = s === Q.target;
+  if (ok) { Q.score++; Q.streak++; } else Q.streak = 0;
+  document.querySelectorAll('#quiz .opts button').forEach((b, i) => { if (Q.opts[i] === Q.target) b.classList.add('ok'); else if (b === btn) b.classList.add('no'); });
+  $('#qFb').textContent = ok ? '✔ Correct!' : '✘ It was ' + Q.target.name; setFocus(Q.target);
+  const sc = document.querySelector('#quiz .meta span:last-of-type'); if (sc) sc.textContent = `Score ${Q.score}/${Q.total} · streak ${Q.streak}`;
+}
+
+/* ---------- clicking on the stage ---------- */
+function stageClick(e) {
+  const r = $('#stage').getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+  if (ST.study === 'quiz' && Q.type === 'loc' && Q.target && !Q.done) {
+    let best = null, bd = 1e9; for (const a of ANCH) { const d = Math.hypot(a.x - x, a.y - y); if (d < bd) { bd = d; best = a; } }
+    if (best && bd < 70 * W / 1280 * 1.6) { Q.done = true; Q.total++; const ok = best.s === Q.target; if (ok) { Q.score++; Q.streak++; } else Q.streak = 0; $('#qFb').textContent = ok ? '✔ Correct!' : '✘ That was ' + best.s.name; setFocus(Q.target); const sc = document.querySelector('#quiz .meta span:last-of-type'); if (sc) sc.textContent = `Score ${Q.score}/${Q.total} · streak ${Q.streak}`; }
+    return;
+  }
+  let hit = LREG.find(l => x >= l.x0 - 3 && x <= l.x1 + 3 && y >= l.y0 && y <= l.y1)?.s;
+  if (!hit) { let bd = 1e9; for (const a of ANCH) { const d = Math.hypot(a.x - x, a.y - y); if (d < bd) { bd = d; hit = a.s; } } if (bd > 45 * W / 1280 * 1.6) hit = null; }
+  if (hit) { if (ST.study === 'recall') ST.reveal.add(hit.id); setFocus(hit); }
+}
+
+/* ---------- main loop ---------- */
+let lastFrameT = performance.now(), fps = 0;
+function loop() {
+  requestAnimationFrame(loop);
+  const now = performance.now();
+  if (ST.src === 'cam') {
+    if (!cam.ready || video.readyState < 2) return;
+    if (video.currentTime !== lastT) { lastT = video.currentTime; try { detect(now); } catch (e) { console.warn(e); } fps = fps * 0.9 + (1000 / Math.max(1, now - lastFrameT)) * 0.1; lastFrameT = now; }
+  }
+  beatK = 1 + 0.07 * Math.pow(Math.max(0, Math.sin(now / 1000 * 7.5)), 3);
+  buildCUR(); collect(); drawBG();
+  ov.setTransform(1, 0, 0, 1, 0, 0); ov.globalCompositeOperation = 'source-over'; ov.clearRect(0, 0, W, H);
+  const quiz = ST.study === 'quiz', locate = quiz && Q.type === 'loc', hide = locate && !Q.done, hotSet = new Set();
+  if (ST.focus) hotSet.add(ST.focus); if (quiz && Q.target && !hide) hotSet.add(Q.target);
+  const only = quiz && !locate ? Q.target : null;
+  const show = only ? ITEMS.filter(it => it.s === only) : quiz && !Q.target ? [] : ITEMS;
+  drawInsetFrames(bgx);
+  if (ST.view === '2d') {
+    const real = ST.style === 'real';
+    ov.globalCompositeOperation = real ? 'source-over' : 'screen';
+    const list = real ? [...show].sort((p, q) => (Z2D[p.k] ?? 5) - (Z2D[q.k] ?? 5)) : show;
+    for (const it of list) draw2D(ov, it, hotSet.has(it.s), false);
+    ov.globalCompositeOperation = 'source-over';
+  } else render3D(hotSet, only, quiz && !Q.target);
+  if (quiz && Q.target && !hide) { const a = ANCH.find(a => a.s === Q.target); if (a) { ov.save(); ov.strokeStyle = '#ffe27a'; ov.lineWidth = 2; const r = 18 + 6 * Math.sin(now / 200); ov.beginPath(); ov.arc(a.x, a.y, r, 0, TAU); ov.stroke(); ov.restore(); } else if (ANCH.length === 0) { ov.fillStyle = '#ffe27a'; ov.font = '16px sans-serif'; ov.fillText('Bring the selected structures into view…', 16, H - 16); } }
+  drawLabels();
+  if (ST.track) drawTracking();
+  const miss = SELLIST.filter(s => s.fr && !ANCH.some(a => a.s === s)).length;
+  const hint = !SELLIST.length ? 'Pick structures from the list' : miss ? `${miss} selected structure(s) not in view (need ${CUR.fr.T ? 'hands/legs/head' : 'shoulders'} visible)` : `${ANCH.length} structure(s) shown`;
+  $('#status').textContent = (ST.src === 'cam' ? `Camera · ${fps.toFixed(0)} fps · ` : 'Mannequin · ') + hint + (ST.view === '3d' ? ' · 3D' : '');
+}
+
+/* ---------- init ---------- */
+buildTree(); loadSel(); refreshSel(); applyFilter();
+const first = CAT.find(s => s.name === 'Heart (whole organ)'); if (first) setFocus(first);
+window.__ATLAS = { CAT, ST, CUR, collect, buildCUR, startMannequin };
+</script>
+</body>
+</html>

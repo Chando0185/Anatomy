@@ -1,0 +1,851 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>X-Ray Mirror 3D</title>
+<script>
+/* Use local three.js (python download_assets.py) when present, otherwise the CDN. */
+(function () {
+  var local = false;
+  try { var x = new XMLHttpRequest(); x.open('HEAD', './vendor/three/three.module.js', false); x.send(); local = x.status === 200; } catch (e) {}
+  var cdn = 'https://cdn.jsdelivr.net/npm/three@0.160.0/';
+  var map = { imports: local
+    ? { 'three': './vendor/three/three.module.js', 'three/addons/': './vendor/three/addons/' }
+    : { 'three': cdn + 'build/three.module.js', 'three/addons/': cdn + 'examples/jsm/' } };
+  var s = document.createElement('script'); s.type = 'importmap'; s.textContent = JSON.stringify(map);
+  document.currentScript.after(s);
+  window.__THREE_SRC = local ? 'local' : 'CDN';
+})();
+</script>
+<style>
+  :root{--bg:#05070d;--card:#0f1626;--card2:#121b2e;--line:#1e2a44;--txt:#dbe4ff;--mut:#8592b3;--acc:#8fc1ff}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--txt);font-family:"Segoe UI",Inter,system-ui,sans-serif}
+  .app{max-width:1280px;margin:0 auto;padding:14px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+  header h1{font-size:18px;margin:0;font-weight:600}
+  header h1 span{color:var(--acc)}
+  header a{color:var(--acc);font-size:13px;text-decoration:none;border:1px solid var(--line);padding:5px 10px;border-radius:8px}
+  header small{color:var(--mut)}
+  .stage{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:16px;overflow:hidden;border:1px solid var(--line)}
+  .stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .stage video{transform:scaleX(-1);object-fit:cover;filter:saturate(.85) brightness(.9)}
+  #gl{filter:drop-shadow(0 0 5px rgba(110,170,255,.65))}
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;
+           background:radial-gradient(circle at 50% 40%,#13213d 0%,#05070d 70%);z-index:5}
+  .overlay h2{margin:0;font-size:26px;font-weight:600}
+  .overlay p{margin:0;color:var(--mut);max-width:560px;line-height:1.5}
+  .btn{background:linear-gradient(135deg,#4f8cff,#7fb3ff);color:#04101f;border:0;border-radius:999px;padding:12px 26px;font-weight:700;font-size:15px;cursor:pointer}
+  .btn:disabled{opacity:.6;cursor:wait}
+  button:focus-visible,input:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .status{position:absolute;left:12px;top:10px;font-size:12px;color:var(--mut);background:rgba(0,0,0,.5);padding:4px 10px;border-radius:999px;pointer-events:none;z-index:4}
+  .panel{display:grid;grid-template-columns:1.25fr 1fr;gap:12px;margin-top:12px}
+  .col{display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .title{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mut);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+  .presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+  .presets button{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer}
+  .presets button.active{background:#1d3157;border-color:#3d67b3}
+  .checks{display:grid;grid-template-columns:1fr 1fr;gap:9px 18px;padding-bottom:12px;border-bottom:1px solid var(--line);margin-bottom:12px}
+  label.chk{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;user-select:none}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  input[type=checkbox]{accent-color:#7fb3ff;width:16px;height:16px;margin:0}
+  .srow{display:grid;grid-template-columns:105px 46px 1fr;align-items:center;gap:8px;margin:10px 0;font-size:14px}
+  .srow output{color:var(--mut);font-size:12px}
+  input[type=range]{accent-color:#8fc1e8;width:100%}
+  .reset{background:none;border:1px solid var(--line);color:var(--mut);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px;letter-spacing:0;text-transform:none}
+  .models{font-size:12px;color:var(--mut);line-height:1.5}
+  footer{margin-top:12px;color:var(--mut);font-size:12px;line-height:1.5}
+  @media (max-width:760px){.panel{grid-template-columns:1fr}.srow{grid-template-columns:95px 42px 1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>X-Ray Mirror <span>3D</span></h1>
+    <small>True 3D meshes · runs 100% in your browser · video never leaves this computer</small>
+    <a href="index.html">← 2D version</a>
+  </header>
+
+  <div class="stage" id="stage">
+    <video id="video" playsinline muted></video>
+    <canvas id="dim"></canvas>
+    <canvas id="gl"></canvas>
+    <canvas id="lab"></canvas>
+    <div class="status" id="status">Idle</div>
+    <div class="overlay" id="overlay">
+      <h2>💀 3D X-ray mirror</h2>
+      <p>Real 3D skull, brain, skeleton and organs that rotate with your head and body. Turn your head and the skull turns. Open your mouth and the jaw opens. Step back to see your full skeleton.</p>
+      <button class="btn" id="startBtn" type="button">Start camera</button>
+      <p id="err" style="color:#ff8a8a"></p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="card">
+      <div class="title">Layers</div>
+      <div class="presets" id="presets">
+        <button type="button" data-preset="skeleton">Skeleton</button>
+        <button type="button" data-preset="brain">Brain</button>
+        <button type="button" data-preset="muscles">Muscles</button>
+        <button type="button" data-preset="organs">Organs</button>
+        <button type="button" data-preset="all" class="active">Everything</button>
+      </div>
+      <div class="checks">
+        <label class="chk"><input type="checkbox" data-layer="skull" checked><span class="dot" style="background:#dbe8ff"></span>Skull</label>
+        <label class="chk"><input type="checkbox" data-layer="brain" checked><span class="dot" style="background:#ff7fb0"></span>Brain</label>
+        <label class="chk"><input type="checkbox" data-layer="muscles" checked><span class="dot" style="background:#ff5a6e"></span>Muscles</label>
+        <label class="chk"><input type="checkbox" data-layer="eyes" checked><span class="dot" style="background:#ffd36e"></span>Eyes</label>
+        <label class="chk"><input type="checkbox" data-layer="hands" checked><span class="dot" style="background:#9ec5ff"></span>Hand bones</label>
+        <label class="chk"><input type="checkbox" data-layer="skeleton" checked><span class="dot" style="background:#c9dcff"></span>Body skeleton</label>
+        <label class="chk"><input type="checkbox" data-layer="organs" checked><span class="dot" style="background:#e0455a"></span>Organs</label>
+        <label class="chk"><input type="checkbox" data-layer="body" checked><span class="dot" style="background:#2f6bdc"></span>Body silhouette</label>
+      </div>
+      <label class="chk"><input type="checkbox" id="showLabels" checked>Show labels</label>
+    </div>
+
+    <div class="col">
+      <div class="card">
+        <div class="title">Render style</div>
+        <div class="presets" id="style" style="margin-bottom:10px">
+          <button type="button" data-style="xray" class="active">X-ray</button>
+          <button type="button" data-style="mesh">Polygon mesh</button>
+          <button type="button" data-style="wire">Wireframe</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="showTracking">Show tracking data</label>
+      </div>
+      <div class="card">
+        <div class="title">Fit to my head <button class="reset" id="resetFit" type="button">Reset</button></div>
+        <div class="srow"><label for="sSize">Overall size</label><output id="oSize">100%</output><input id="sSize" type="range" min="60" max="160" value="100"></div>
+        <div class="srow"><label for="sWidth">Width</label><output id="oWidth">100%</output><input id="sWidth" type="range" min="70" max="140" value="100"></div>
+        <div class="srow"><label for="sHeight">Height</label><output id="oHeight">100%</output><input id="sHeight" type="range" min="70" max="140" value="100"></div>
+        <div class="srow"><label for="sDepth">Depth</label><output id="oDepth">100%</output><input id="sDepth" type="range" min="60" max="160" value="100"></div>
+      </div>
+      <div class="card models" id="modelInfo">3D models: built-in procedural meshes.</div>
+    </div>
+  </div>
+
+  <footer>
+    Tracking: MediaPipe Face, Hand and Pose Landmarkers (on-device). Rendering: Three.js (WebGL).
+    Optional real anatomy: drop BodyParts3D GLB files in <code>static/models/anatomy/</code> (see README). BodyParts3D © DBCLS, CC BY-SA 2.1 Japan.
+    Educational visual, not a medical image.
+  </footer>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const $ = s => document.querySelector(s);
+const TAU = Math.PI * 2;
+const video = $('#video'), glCanvas = $('#gl'), dimCanvas = $('#dim'), labCanvas = $('#lab');
+const dctx = dimCanvas.getContext('2d'), lctx = labCanvas.getContext('2d');
+const statusEl = $('#status');
+let W = 1280, H = 720;
+
+/* ======================= settings / UI ======================= */
+const S = {
+  layers: { skull: true, brain: true, muscles: true, eyes: true, hands: true, skeleton: true, organs: true, body: true },
+  labels: true, tracking: false, style: 'xray', size: 1, width: 1, height: 1, depth: 1
+};
+const PRESETS = {
+  skeleton: { skull: true,  brain: false, muscles: false, eyes: true, hands: true,  skeleton: true,  organs: false, body: true },
+  brain:    { skull: false, brain: true,  muscles: false, eyes: true, hands: false, skeleton: false, organs: false, body: true },
+  muscles:  { skull: true,  brain: false, muscles: true,  eyes: true, hands: false, skeleton: false, organs: false, body: true },
+  organs:   { skull: false, brain: true,  muscles: false, eyes: false, hands: false, skeleton: false, organs: true, body: true },
+  all:      { skull: true,  brain: true,  muscles: true,  eyes: true, hands: true,  skeleton: true,  organs: true,  body: true }
+};
+document.querySelectorAll('[data-layer]').forEach(cb => cb.addEventListener('change', () => {
+  S.layers[cb.dataset.layer] = cb.checked;
+  document.querySelectorAll('#presets button').forEach(b => b.classList.remove('active'));
+}));
+document.querySelectorAll('#presets button').forEach(btn => btn.addEventListener('click', () => {
+  const p = PRESETS[btn.dataset.preset]; Object.assign(S.layers, p);
+  document.querySelectorAll('[data-layer]').forEach(cb => cb.checked = !!p[cb.dataset.layer]);
+  document.querySelectorAll('#presets button').forEach(b => b.classList.toggle('active', b === btn));
+}));
+document.querySelectorAll('#style button').forEach(btn => btn.addEventListener('click', () => {
+  S.style = btn.dataset.style; applyStyle();
+  document.querySelectorAll('#style button').forEach(b => b.classList.toggle('active', b === btn));
+}));
+$('#showLabels').addEventListener('change', e => S.labels = e.target.checked);
+$('#showTracking').addEventListener('change', e => S.tracking = e.target.checked);
+const SLIDERS = [['sSize', 'oSize', 'size'], ['sWidth', 'oWidth', 'width'], ['sHeight', 'oHeight', 'height'], ['sDepth', 'oDepth', 'depth']];
+function syncSliders() {
+  for (const [sid, oid, key] of SLIDERS) {
+    const v = Math.min(200, Math.max(10, Number($('#' + sid).value) || 100));
+    S[key] = v / 100; $('#' + oid).textContent = v + '%';
+  }
+}
+SLIDERS.forEach(([sid]) => $('#' + sid).addEventListener('input', syncSliders));
+$('#resetFit').addEventListener('click', () => { SLIDERS.forEach(([sid]) => $('#' + sid).value = 100); syncSliders(); });
+syncSliders();
+
+/* ======================= three.js setup ======================= */
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, alpha: true, antialias: true, premultipliedAlpha: false });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.setClearColor(0x000000, 0);
+const scene = new THREE.Scene();
+// orthographic camera in pixel units: x right [0,W], y up [-H,0], z toward viewer
+const camera = new THREE.OrthographicCamera(0, W, 0, -H, -100000, 100000);
+camera.position.set(0, 0, 50000);
+scene.add(new THREE.AmbientLight(0x8fa8d8, 0.55));
+const key = new THREE.DirectionalLight(0xffffff, 1.25); key.position.set(-0.5, 0.8, 1); scene.add(key);
+const fill = new THREE.DirectionalLight(0x6fa0ff, 0.45); fill.position.set(0.7, -0.3, 0.6); scene.add(fill);
+function resizeAll(w, h) {
+  W = w; H = h;
+  renderer.setSize(W, H, false);
+  camera.left = 0; camera.right = W; camera.top = 0; camera.bottom = -H; camera.updateProjectionMatrix();
+  for (const c of [dimCanvas, labCanvas]) { c.width = W; c.height = H; }
+}
+
+/* ======================= materials & parts ======================= */
+const COLORS = {
+  bone: 0xe2ecff, tooth: 0xffffff, brain: 0xff8fb8, muscle: 0xff4e64, eye: 0xffdc96, iris: 0x7fd0ff,
+  heart: 0xff3048, lung: 0xff9fb8, liver: 0xb04a3c, stomach: 0xf0a090, gut: 0xe8907f, kidney: 0xc0506a, void: 0x000000
+};
+const XRAY_K = { bone: [2.0, 1.5, 0.10], tooth: [1.2, 1.6, 0.35], brain: [1.6, 1.1, 0.10], muscle: [1.4, 0.9, 0.08], eye: [1.5, 1.0, 0.12], iris: [1.0, 1.4, 0.5],
+  heart: [1.3, 1.2, 0.18], lung: [1.8, 0.9, 0.05], liver: [1.4, 0.9, 0.10], stomach: [1.5, 0.9, 0.08], gut: [1.5, 0.9, 0.08], kidney: [1.5, 0.9, 0.08] };
+const MATS = {};
+function mats(kind) {
+  if (MATS[kind]) return MATS[kind];
+  const col = new THREE.Color(COLORS[kind]);
+  const [p, k, base] = XRAY_K[kind] || [1.8, 1.2, 0.1];
+  const xray = new THREE.ShaderMaterial({
+    uniforms: { c: { value: col }, p: { value: p }, k: { value: k }, b: { value: base } },
+    vertexShader: `varying vec3 vN; void main(){ vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+    fragmentShader: `uniform vec3 c; uniform float p; uniform float k; uniform float b; varying vec3 vN;
+      void main(){ float f = pow(1.0 - abs(normalize(vN).z), p); float a = clamp(b + f * k, 0.0, 1.0); gl_FragColor = vec4(c * a, a); }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+  });
+  const solid = kind === 'void'
+    ? new THREE.MeshBasicMaterial({ color: 0x02050f, side: THREE.DoubleSide })
+    : new THREE.MeshStandardMaterial({ color: col, flatShading: true, roughness: 0.55, metalness: 0.08, side: THREE.DoubleSide,
+        transparent: kind !== 'bone' && kind !== 'tooth', opacity: kind === 'lung' ? 0.55 : 0.85,
+        emissive: col.clone().multiplyScalar(0.12) });
+  const wire = new THREE.MeshBasicMaterial({ color: kind === 'bone' || kind === 'tooth' ? 0xbfe6ff : col, wireframe: true, transparent: true, opacity: 0.3, depthWrite: false });
+  return (MATS[kind] = { xray, solid, wire });
+}
+const PARTS = [];
+function part(geo, kind, layer, parent) {
+  const m = mats(kind), g = new THREE.Group();
+  const xr = new THREE.Mesh(geo, m.xray), so = new THREE.Mesh(geo, m.solid), wi = new THREE.Mesh(geo, m.wire);
+  xr.renderOrder = 2; wi.renderOrder = 3;
+  g.add(xr, so, wi);
+  g.userData = { kind, layer, xr, so, wi, active: true };
+  PARTS.push(g); if (parent) parent.add(g);
+  setStyleFor(g);
+  return g;
+}
+function setStyleFor(g) {
+  const { kind, xr, so, wi } = g.userData, st = S.style;
+  xr.visible = st === 'xray' && kind !== 'void';
+  so.visible = st === 'mesh';
+  wi.visible = st !== 'xray' && kind !== 'void';
+}
+function applyStyle() {
+  PARTS.forEach(setStyleFor);
+  for (const k in MATS) MATS[k].wire.opacity = S.style === 'wire' ? 0.9 : 0.28;
+  glCanvas.style.filter = S.style === 'xray' ? 'drop-shadow(0 0 5px rgba(110,170,255,.65))' : 'drop-shadow(0 0 2px rgba(110,170,255,.5))';
+}
+function setGeometry(g, geo) { const { xr, so, wi } = g.userData; xr.geometry = so.geometry = wi.geometry = geo; }
+
+/* ======================= geometry builders ======================= */
+const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+function hash3(x, y, z) { const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453; return s - Math.floor(s); }
+function noise3(x, y, z) { // cheap smooth value noise
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), xf = x - xi, yf = y - yi, zf = z - zi;
+  const s = t => t * t * (3 - 2 * t), u = s(xf), v = s(yf), w = s(zf);
+  const L = (a, b, t) => a + (b - a) * t;
+  const h = (i, j, k) => hash3(xi + i, yi + j, zi + k);
+  return L(L(L(h(0,0,0), h(1,0,0), u), L(h(0,1,0), h(1,1,0), u), v), L(L(h(0,0,1), h(1,0,1), u), L(h(0,1,1), h(1,1,1), u), v), w);
+}
+/* deform a unit icosphere: fn(dir:Vector3) -> Vector3 position */
+function blob(detail, fn) {
+  const g = new THREE.IcosahedronGeometry(1, detail), p = g.attributes.position, d = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) { d.set(p.getX(i), p.getY(i), p.getZ(i)).normalize(); const q = fn(d); p.setXYZ(i, q.x, q.y, q.z); }
+  g.deleteAttribute('normal'); g.deleteAttribute('uv');
+  const m = mergeVertices(g); m.computeVertexNormals(); return m;   // shared vertices → smooth normals for X-ray, flat shading in mesh mode
+}
+const ellipsoid = (detail, rx, ry, rz, cx = 0, cy = 0, cz = 0, bump = 0, freq = 3) => blob(detail, d => {
+  const n = bump ? 1 + bump * (noise3(d.x * freq + 9, d.y * freq + 3, d.z * freq + 5) - 0.5) : 1;
+  return V3(cx + d.x * rx * n, cy + d.y * ry * n, cz + d.z * rz * n);
+});
+/* long bone along +Y from 0..1, unit diameter: waisted shaft with knobby ends */
+function longBoneGeo(seg = 8) {
+  const pts = [];
+  const prof = [[0, 0], [0.3, 0.015], [0.48, 0.05], [0.5, 0.09], [0.42, 0.15], [0.3, 0.25], [0.26, 0.5], [0.3, 0.75], [0.42, 0.85], [0.5, 0.91], [0.48, 0.95], [0.3, 0.985], [0, 1]];
+  for (const [r, y] of prof) pts.push(new THREE.Vector2(Math.max(0.001, r), y));
+  const g = new THREE.LatheGeometry(pts, seg); g.computeVertexNormals(); return g;
+}
+const BONE_GEO = longBoneGeo(8), BONE_GEO_FINE = longBoneGeo(12);
+const BALL_GEO = new THREE.IcosahedronGeometry(1, 1);
+const tube = (pts, r, tubSeg = 32, radSeg = 6, closed = false) => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, closed), tubSeg, r, radSeg, closed);
+const mirrorPts = pts => pts.map(p => V3(-p.x, p.y, p.z));
+
+/* ======================= HEAD MODEL =======================
+   Head-local units: 1 = half face width (landmark 234↔454).
+   Origin = midpoint of 234/454; +x person's side 454, +y up, +z toward camera. */
+const head = new THREE.Group(); head.matrixAutoUpdate = false; scene.add(head);
+const HEAD_ANCH = {};
+// cranium: ellipsoid with flattened forehead/occiput, slight temporal narrowing
+const craniumGeo = blob(4, d => {
+  let x = d.x * 1.0, y = d.y * 1.12, z = d.z * 1.28;
+  if (y < 0) { x *= 1 - 0.12 * Math.min(1, -y); }                 // narrower below equator
+  if (z > 0.7) z = 0.7 + (z - 0.7) * 0.35;                         // flatter forehead
+  const temp = Math.exp(-((y - 0.1) ** 2) * 6) * Math.max(0, Math.abs(d.x) - 0.5) * 0.18;
+  x -= Math.sign(d.x) * temp;
+  return V3(x, y + 0.55, z - 0.32);
+});
+const skull = part(craniumGeo, 'bone', 'skull', head);
+// facial skeleton: maxilla / mid-face mass
+part(blob(3, d => {
+  const x = d.x * 0.62, y = d.y * 0.5, z = d.z * 0.5;
+  return V3(x * (1 - 0.25 * Math.max(0, -d.y)), y - 0.42, z + 0.28 + (d.z > 0 ? 0.08 * (1 - Math.abs(d.x)) : 0));
+}), 'bone', 'skull', head);
+// cheekbones + zygomatic arches
+for (const s of [-1, 1]) {
+  part(ellipsoid(2, 0.24, 0.17, 0.3, s * 0.66, -0.22, 0.32), 'bone', 'skull', head);
+  part(tube([V3(s * 0.7, -0.24, 0.25), V3(s * 0.88, -0.2, -0.05), V3(s * 0.9, -0.18, -0.35)], 0.06, 12, 6), 'bone', 'skull', head);
+  part(ellipsoid(2, 0.08, 0.16, 0.1, s * 0.88, -0.6, -0.52), 'bone', 'skull', head);      // mastoid
+}
+// brow ridge
+part(tube([V3(-0.75, 0.22, 0.55), V3(-0.4, 0.3, 0.78), V3(0, 0.26, 0.86), V3(0.4, 0.3, 0.78), V3(0.75, 0.22, 0.55)], 0.07, 30, 6), 'bone', 'skull', head);
+// nasal bones
+part(new THREE.ConeGeometry(0.1, 0.32, 5).translate(0, -0.06, 0.86).rotateX(0.0), 'bone', 'skull', head);
+// orbits (rims) + dark sockets, nasal aperture (solid mode)
+const orbits = [];
+for (const s of [-1, 1]) {
+  const rim = part(new THREE.TorusGeometry(0.27, 0.055, 6, 18), 'bone', 'skull', head);
+  const hole = part(new THREE.CircleGeometry(0.25, 16), 'void', 'skull', head);
+  orbits.push({ s, rim, hole });
+}
+const nasalHole = part(new THREE.CircleGeometry(0.12, 3).rotateZ(Math.PI / 2 + Math.PI / 6).scale(0.9, 1.4, 1), 'void', 'skull', head);
+// teeth helpers
+function teethGeo(lower) {
+  const gs = [], n = 14;
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n - 0.5, ang = t * 2.5, r = 0.42;
+    const w = 0.055 + 0.03 * Math.abs(t) * 2, h = 0.13 - Math.abs(t) * 0.05;
+    const g = new THREE.BoxGeometry(w, h, 0.07 + Math.abs(t) * 0.1, 1, 1, 1);
+    g.rotateY(ang).translate(Math.sin(ang) * r, lower ? h / 2 : -h / 2, Math.cos(ang) * r - r);
+    gs.push(g);
+  }
+  return mergeGeometries(gs);
+}
+const upperTeeth = part(teethGeo(false), 'tooth', 'skull', head);
+// jaw (rotates around the temporo-mandibular joint)
+const jawPivot = new THREE.Group(); head.add(jawPivot);
+const TMJ = V3(0, -0.18, -0.42);
+jawPivot.position.copy(TMJ);
+const jawPts = [V3(0.84, -0.16, -0.46), V3(0.82, -0.55, -0.42), V3(0.76, -0.95, -0.25), V3(0.5, -1.25, 0.25), V3(0.2, -1.42, 0.55), V3(0, -1.46, 0.62)];
+const jawCurve = [...mirrorPts(jawPts).reverse(), ...jawPts.slice(1)].map(p => p.sub(TMJ));
+const mandible = part(tube(jawCurve, 0.085, 60, 7), 'bone', 'skull', jawPivot);
+part(ellipsoid(2, 0.1, 0.1, 0.06, 0 - TMJ.x, -1.4 - TMJ.y, 0.6 - TMJ.z), 'bone', 'skull', jawPivot);   // chin
+for (const s of [-1, 1]) part(new THREE.ConeGeometry(0.06, 0.28, 5).translate(s * 0.78 - TMJ.x, -0.05 - TMJ.y, -0.2 - TMJ.z), 'bone', 'skull', jawPivot); // coronoid
+const lowerTeeth = part(teethGeo(true), 'tooth', 'skull', jawPivot);
+// brain: two hemispheres with gyri + cerebellum
+const brainGeo = blob(5, d => {
+  const gy = noise3(d.x * 7 + 1, d.y * 7 + 2, d.z * 7 + 3), r = 1 + 0.06 * Math.abs(gy - 0.5) * 2 - 0.03;
+  let x = d.x * 0.88 * r, y = d.y * 0.86 * r, z = d.z * 1.12 * r;
+  if (Math.abs(d.x) < 0.07 && d.y > -0.2) x *= 0.4, y -= 0.04;    // longitudinal fissure
+  if (y < -0.2 && z < 0.2) y = -0.2 + (y + 0.2) * 0.6;              // flat base
+  return V3(x, y + 0.62, z - 0.34);
+});
+part(brainGeo, 'brain', 'brain', head);
+part(ellipsoid(3, 0.45, 0.26, 0.32, 0, -0.08, -1.0, 0.15, 9), 'brain', 'brain', head);                 // cerebellum
+part(tube([V3(0, 0.0, -0.75), V3(0, -0.35, -0.72), V3(0, -0.75, -0.7)], 0.1, 10, 8), 'brain', 'brain', head); // brainstem
+// eyes
+const eyes = [];
+for (const s of [-1, 1]) {
+  const ball = part(new THREE.IcosahedronGeometry(0.2, 2), 'eye', 'eyes', head);
+  const iris = part(new THREE.IcosahedronGeometry(0.075, 1).scale(1, 1, 0.4), 'iris', 'eyes', head);
+  eyes.push({ s, ball, iris });
+}
+// muscles: temporalis, masseter, frontalis, orbicularis oris
+for (const s of [-1, 1]) {
+  part(blob(3, d => V3(s * (0.96 + 0.04 * d.x * s) + d.x * 0.08, 0.2 + d.y * 0.6, -0.25 + d.z * 0.62)), 'muscle', 'muscles', head);   // temporalis
+  part(blob(2, d => V3(s * 0.8 + d.x * 0.1, -0.62 + d.y * 0.42, -0.15 + d.z * 0.22)), 'muscle', 'muscles', head);                     // masseter
+}
+part(blob(3, d => { const r = 1.04; return V3(d.x * 0.82 * r, 0.75 + d.y * 0.65 * r, 0.28 + Math.max(0, d.z) * 0.5); }), 'muscle', 'muscles', head);  // frontalis (front shell)
+const oris = part(new THREE.TorusGeometry(0.28, 0.06, 6, 20).scale(1, 0.55, 1), 'muscle', 'muscles', head);
+
+/* ======================= HANDS ======================= */
+const HAND_BONES = [[0, 1], [1, 2], [2, 3], [3, 4], [5, 6], [6, 7], [7, 8], [9, 10], [10, 11], [11, 12], [13, 14], [14, 15], [15, 16], [17, 18], [18, 19], [19, 20]];
+const HAND_LINKS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+function makeHandRig() {
+  const g = new THREE.Group(); scene.add(g);
+  const mk = () => { const p = part(BONE_GEO, 'bone', 'hands', g); p.matrixAutoUpdate = false; return p; };
+  const mkb = () => { const p = part(BALL_GEO, 'bone', 'hands', g); p.matrixAutoUpdate = false; return p; };
+  return { g, phal: HAND_BONES.map(mk), meta: [0, 1, 2, 3].map(mk), carp: Array.from({ length: 8 }, mkb), fore: [mk(), mk()] };
+}
+const handRigs = [makeHandRig(), makeHandRig()];
+
+/* ======================= BODY ======================= */
+// torso-local units: 1 = half shoulder width. Origin = shoulder midpoint, +x person's left, +y up, +z toward camera.
+// Model built for torso length (shoulders→hips) = TL0; scaled per frame to the real length.
+const TL0 = 2.7;
+const torso = new THREE.Group(); torso.matrixAutoUpdate = false; scene.add(torso);
+const BODY_ANCH = {};
+// spine
+const VERTS = [];
+for (let i = 0; i < 24; i++) {
+  const cervical = i < 7, lumbar = i >= 19;
+  const y = cervical ? 0.62 - i * 0.085 : lumbar ? -1.72 - (i - 19) * 0.19 : 0.0 - (i - 7) * 0.145;
+  const z = -0.42 + (cervical ? 0.08 : lumbar ? 0.1 - (i - 19) * 0.01 : -0.04 * Math.sin((i - 7) / 12 * Math.PI));
+  const r = cervical ? 0.07 : lumbar ? 0.13 : 0.09, h = cervical ? 0.06 : lumbar ? 0.13 : 0.1;
+  const g = new THREE.CylinderGeometry(r, r * 1.05, h, 8);
+  const sp = new THREE.ConeGeometry(r * 0.35, r * 1.6, 4).rotateX(-Math.PI / 2 - 0.5).translate(0, -h * 0.2, -r * 1.3);   // spinous process
+  const tr = new THREE.CylinderGeometry(r * 0.2, r * 0.25, r * 3.2, 4).rotateZ(Math.PI / 2).translate(0, 0, -r * 0.7);   // transverse processes
+  VERTS.push(part(mergeGeometries([g, sp, tr].map(x => x.index ? x.toNonIndexed() : x)).translate(0, y, z), 'bone', 'skeleton', torso));
+}
+// rib cage
+for (let i = 0; i < 12; i++) {
+  const y0 = -0.12 - i * 0.135;
+  const a = 0.42 + 0.5 * Math.sin(Math.min(1, (i + 1) / 7) * Math.PI / 2) - (i > 8 ? (i - 8) * 0.05 : 0);
+  const b = 0.38 + 0.18 * Math.sin(Math.min(1, (i + 1) / 6) * Math.PI / 2);
+  const reach = i < 7 ? Math.PI - 0.32 : i < 10 ? Math.PI - 0.55 - (i - 7) * 0.12 : 1.9;
+  for (const s of [-1, 1]) {
+    const pts = [];
+    for (let k = 0; k <= 10; k++) {
+      const f = 0.12 + (reach - 0.12) * k / 10;
+      pts.push(V3(s * a * Math.sin(f) + s * 0.08 * (1 - k / 10), y0 - 0.32 * (f / Math.PI) - (i * 0.012) * (f / Math.PI), -0.42 + b - b * Math.cos(f)));
+    }
+    part(tube(pts, 0.032, 24, 5), 'bone', 'skeleton', torso);
+    if (i < 10) { // costal cartilage to sternum
+      const e = pts[pts.length - 1], st = V3(s * 0.05, Math.max(-1.25, -0.2 - Math.min(i, 7) * 0.13), 0.42);
+      part(tube([e, V3((e.x + st.x) / 2, (e.y + st.y) / 2 + 0.03, (e.z + st.z) / 2 + 0.03), st], 0.022, 8, 4), 'bone', 'skeleton', torso);
+    }
+  }
+}
+// sternum, clavicles, scapulae
+part(new THREE.BoxGeometry(0.14, 1.05, 0.05, 1, 4, 1).translate(0, -0.72, 0.43), 'bone', 'skeleton', torso);
+part(new THREE.BoxGeometry(0.22, 0.2, 0.06).translate(0, -0.12, 0.42), 'bone', 'skeleton', torso);
+for (const s of [-1, 1]) {
+  part(tube([V3(s * 0.08, -0.05, 0.38), V3(s * 0.4, 0.02, 0.32), V3(s * 0.7, -0.03, 0.05), V3(s * 0.95, 0.02, -0.1)], 0.04, 16, 6), 'bone', 'skeleton', torso);
+  const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(s * 0.5, 0.02); sh.lineTo(s * 0.12, -0.6); sh.closePath();
+  part(new THREE.ExtrudeGeometry(sh, { depth: 0.03, bevelEnabled: true, bevelSize: 0.03, bevelThickness: 0.02, bevelSegments: 1 }).translate(s * 0.38, -0.05, -0.62), 'bone', 'skeleton', torso);
+}
+// pelvis (scaled with torso, positioned at hip level each frame)
+const pelvis = new THREE.Group(); torso.add(pelvis);
+for (const s of [-1, 1]) {
+  // iliac wing: a curved, flattened half-dome
+  part(blob(3, d => {
+    const x = s * (0.55 + d.x * s * 0.42), y = 0.25 + d.y * 0.32, z = -0.1 + d.z * 0.12 + 0.18 * Math.cos((d.x * s + 1) * 1.2);
+    return V3(x, y, z);
+  }), 'bone', 'skeleton', pelvis);
+  part(new THREE.TorusGeometry(0.17, 0.05, 6, 14).scale(1, 0.7, 1).rotateY(s * 0.4).translate(s * 0.3, -0.12, 0.12), 'bone', 'skeleton', pelvis); // pubis/ischium ring
+  part(new THREE.SphereGeometry(0.13, 8, 6, 0, TAU, 0, Math.PI / 2).rotateZ(-s * Math.PI / 2).translate(s * 0.62, 0.0, 0.02), 'bone', 'skeleton', pelvis); // acetabulum
+}
+part(new THREE.ConeGeometry(0.2, 0.5, 6).rotateX(Math.PI).rotateX(0.35).translate(0, 0.08, -0.32), 'bone', 'skeleton', pelvis);   // sacrum
+// organs
+const ORG = {};
+ORG.lungL = part(blob(3, d => V3(0.42 + d.x * 0.32, -0.62 + d.y * 0.55 * (d.y < 0 ? 0.9 : 1), -0.05 + d.z * 0.34 - Math.max(0, -d.x) * 0.1)), 'lung', 'organs', torso);
+ORG.lungR = part(blob(3, d => V3(-0.42 + d.x * 0.34, -0.6 + d.y * 0.55, -0.05 + d.z * 0.34)), 'lung', 'organs', torso);
+ORG.heart = part(blob(3, d => { const t = 1 + 0.12 * Math.max(0, -d.y); return V3(0.12 + d.x * 0.22 * t + d.y * 0.06, -0.82 + d.y * 0.25, 0.15 + d.z * 0.2); }), 'heart', 'organs', torso);
+part(tube([V3(0.05, -0.62, 0.18), V3(0.08, -0.38, 0.12), V3(0.2, -0.36, 0.0), V3(0.12, -0.55, -0.22), V3(0.05, -1.6, -0.25)], 0.055, 24, 8), 'heart', 'organs', torso);   // aorta
+part(tube([V3(0, 0.62, 0.0), V3(0, 0.1, 0.0), V3(0, -0.3, -0.02)], 0.06, 8, 8), 'bone', 'organs', torso);  // trachea (cartilage)
+ORG.liver = part(blob(3, d => V3(-0.3 + d.x * 0.52, -1.38 + d.y * 0.24 * (1 - 0.4 * d.x), 0.02 + d.z * 0.32)), 'liver', 'organs', torso);
+ORG.stomach = part(blob(3, d => V3(0.35 + d.x * 0.26, -1.42 + d.y * 0.2 - d.x * 0.08, 0.12 + d.z * 0.2)), 'stomach', 'organs', torso);
+for (const s of [-1, 1]) part(ellipsoid(2, 0.1, 0.16, 0.08, s * 0.32, -1.68 - (s < 0 ? 0.05 : 0), -0.3), 'kidney', 'organs', torso);
+ORG.colon = part(tube([V3(-0.38, -2.45, 0.1), V3(-0.45, -1.75, 0.12), V3(0, -1.68, 0.2), V3(0.45, -1.75, 0.12), V3(0.42, -2.35, 0.1), V3(0.1, -2.5, 0.05)], 0.09, 48, 8), 'gut', 'organs', torso);
+ORG.small = part(new THREE.TorusKnotGeometry(0.22, 0.045, 90, 6, 3, 7).scale(1, 0.75, 0.6).translate(0, -2.12, 0.15), 'gut', 'organs', torso);
+// limbs: pooled long bones (world space)
+const LIMBS = new THREE.Group(); scene.add(LIMBS);
+const limb = () => { const p = part(BONE_GEO_FINE, 'bone', 'skeleton', LIMBS); p.matrixAutoUpdate = false; return p; };
+const joint = () => { const p = part(BALL_GEO, 'bone', 'skeleton', LIMBS); p.matrixAutoUpdate = false; return p; };
+const BODY = {
+  hum: [limb(), limb()], rad: [limb(), limb()], uln: [limb(), limb()], fem: [limb(), limb()], neck: [limb(), limb()], tib: [limb(), limb()], fib: [limb(), limb()],
+  calc: [limb(), limb()], meta: [[limb(), limb(), limb()], [limb(), limb(), limb()]], pat: [joint(), joint()], shJ: [joint(), joint()], hipJ: [joint(), joint()], talus: [joint(), joint()],
+  handSimple: [[limb(), limb(), limb(), limb(), limb()], [limb(), limb(), limb(), limb(), limb()]]
+};
+
+/* ======================= optional real models (BodyParts3D → GLB) ======================= */
+const MODEL_SLOTS = { skull: skull, mandible: mandible };
+const MODEL_CFG = { rotX: -Math.PI / 2 };   // BodyParts3D is Z-up
+async function tryLoadModels() {
+  const loader = new GLTFLoader(), loaded = [];
+  for (const [name, target] of Object.entries(MODEL_SLOTS)) {
+    const url = `./models/anatomy/${name}.glb`;
+    try { const r = await fetch(url, { method: 'HEAD' }); if (!r.ok) continue; } catch { continue; }
+    try {
+      const gltf = await loader.loadAsync(url); gltf.scene.updateMatrixWorld(true);
+      const geos = [];
+      gltf.scene.traverse(o => { if (o.isMesh) { const g = o.geometry.clone(); g.applyMatrix4(o.matrixWorld); for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k); if (!g.attributes.normal) g.computeVertexNormals(); geos.push(g.index ? g.toNonIndexed() : g); } });
+      if (!geos.length) continue;
+      const geo = mergeGeometries(geos); geo.rotateX(MODEL_CFG.rotX);
+      // fit to the procedural part's bounding box (uniform scale, centred)
+      const old = target.userData.xr.geometry; old.computeBoundingBox(); geo.computeBoundingBox();
+      const ob = old.boundingBox, nb = geo.boundingBox, os = ob.getSize(V3(0, 0, 0)), ns = nb.getSize(V3(0, 0, 0));
+      const k = Math.min(os.x / ns.x, os.y / ns.y, os.z / ns.z);
+      const nc = nb.getCenter(V3(0, 0, 0)), oc = ob.getCenter(V3(0, 0, 0));
+      geo.translate(-nc.x, -nc.y, -nc.z); geo.scale(k, k, k); geo.translate(oc.x, oc.y, oc.z); geo.computeVertexNormals();
+      setGeometry(target, geo); loaded.push(name);
+    } catch (e) { console.warn('model load failed', name, e); }
+  }
+  $('#modelInfo').textContent = loaded.length ? `3D models: BodyParts3D (${loaded.join(', ')}) + procedural meshes. BodyParts3D © DBCLS, CC BY-SA 2.1 JP.` : '3D models: built-in procedural meshes (drop BodyParts3D GLBs into static/models/anatomy/ to replace).';
+}
+
+/* ======================= math helpers ======================= */
+const _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _d = new THREE.Vector3(), UPV = new THREE.Vector3(0, 1, 0);
+function setSeg(g, a, b, w) {
+  _d.subVectors(b, a); const L = _d.length();
+  if (!(L > 1e-3) || !(w > 0)) { g.userData.active = false; return; }
+  _q.setFromUnitVectors(UPV, _d.multiplyScalar(1 / L)); _s.set(w, L, w);
+  g.matrix.compose(a, _q, _s); g.matrixWorldNeedsUpdate = true; g.userData.active = true;
+}
+function setBall(g, c, r) { if (!(r > 0)) { g.userData.active = false; return; } g.matrix.makeScale(r, r, r).setPosition(c); g.matrixWorldNeedsUpdate = true; g.userData.active = true; }
+const lerp3 = (a, b, t) => a.clone().lerp(b, t);
+const mid3 = (a, b) => a.clone().add(b).multiplyScalar(0.5);
+/* orthonormal frame matrix from x-direction and approximate up; z toward camera */
+function frameMatrix(origin, xdir, updir, sx, sy, sz, out) {
+  const X = xdir.clone().normalize();
+  const Y = updir.clone().sub(X.clone().multiplyScalar(updir.dot(X))).normalize();
+  let Z = new THREE.Vector3().crossVectors(X, Y);
+  if (Z.z < 0) Z.negate();
+  out.makeBasis(X.multiplyScalar(sx), Y.multiplyScalar(sy), Z.multiplyScalar(sz)).setPosition(origin);
+  return out;
+}
+function smooth(prev, cur, a) {
+  if (!prev || prev.length !== cur.length) return cur.map(q => ({ x: q.x, y: q.y, z: q.z, v: q.visibility ?? 1 }));
+  return cur.map((q, i) => {
+    const p = prev[i], d = Math.hypot(q.x - p.x, q.y - p.y), k = Math.min(1, a + d * 25);
+    return { x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k, z: p.z + (q.z - p.z) * k, v: p.v + ((q.visibility ?? 1) - p.v) * 0.5 };
+  });
+}
+
+/* ======================= per-frame updates ======================= */
+const LABELS = [];
+const tmpM = new THREE.Matrix4(), inv = new THREE.Matrix4();
+function updateHead(face) {
+  if (!face) return null;
+  const P = i => V3((1 - face[i].x) * W, -face[i].y * H, -face[i].z * W);
+  const a = P(234), b = P(454), O = mid3(a, b), half = a.distanceTo(b) / 2;
+  if (half < 15) return null;
+  const k = S.size;
+  frameMatrix(O, b.clone().sub(a), P(10).sub(P(152)), half * k * S.width, half * k * S.height, half * k * S.depth, head.matrix);
+  head.matrixWorldNeedsUpdate = true;
+  inv.copy(head.matrix).invert();
+  const L = i => P(i).applyMatrix4(inv);
+  // eyes & irises from landmarks
+  const eyeIdx = [[33, 133, 468], [362, 263, 473]];
+  eyeIdx.forEach(([c1, c2, ir], n) => {
+    const c = mid3(L(c1), L(c2)); c.z -= 0.14;
+    const sideEye = eyes.find(e => Math.sign(c.x) === e.s) || eyes[n];
+    sideEye.ball.position.copy(c);
+    if (face.length > 477) { const ip = L(ir); sideEye.iris.position.set(ip.x, ip.y, c.z + 0.19); }
+    else sideEye.iris.position.set(c.x, c.y, c.z + 0.19);
+    const o = orbits.find(o => o.s === Math.sign(c.x)) || orbits[n];
+    o.rim.position.set(c.x, c.y + 0.02, c.z + 0.12); o.hole.position.set(c.x, c.y + 0.02, c.z + 0.1);
+  });
+  const nb = L(2); nasalHole.position.set(nb.x, nb.y + 0.12, nb.z - 0.12);
+  // teeth + jaw from lips
+  const u13 = L(13), l14 = L(14);
+  upperTeeth.position.set(u13.x, u13.y + 0.1, u13.z - 0.12);
+  const gap = Math.max(0, u13.distanceTo(l14) - 0.02);
+  jawPivot.rotation.x = Math.min(0.55, gap * 0.85);
+  lowerTeeth.position.set(u13.x - TMJ.x, u13.y - 0.16 - TMJ.y, u13.z - 0.12 - TMJ.z);
+  const lc = mid3(L(61), L(291)); oris.position.set(lc.x, (u13.y + l14.y) / 2, lc.z - 0.05);
+  oris.scale.set(1, 1 + gap * 2.2, 1);
+  // labels (head-local anchors)
+  const lab = (t, p, layer) => LABELS.push({ t, p: p.clone().applyMatrix4(head.matrix), layer });
+  lab('Frontal bone', V3(0.2, 1.25, 0.55), 'skull'); lab('Parietal bone', V3(-0.7, 1.35, -0.4), 'skull');
+  lab('Temporal bone', V3(-0.98, 0.1, -0.3), 'skull'); lab('Zygomatic bone', V3(0.75, -0.25, 0.35), 'skull');
+  lab('Maxilla (upper jaw)', V3(-0.3, -0.5, 0.6), 'skull'); lab('Mandible (lower jaw)', V3(0.55, -1.2, 0.3).sub(TMJ).applyMatrix4(tmpM.makeRotationX(jawPivot.rotation.x)).add(TMJ), 'skull');
+  lab('Teeth', u13.clone().add(V3(0.2, -0.05, 0)), 'skull'); lab('Nasal bone', V3(0, 0.0, 0.9), 'skull');
+  lab('Frontal lobe', V3(0.35, 1.0, 0.45), 'brain'); lab('Parietal lobe', V3(-0.3, 1.45, -0.3), 'brain'); lab('Cerebellum', V3(-0.4, -0.08, -1.0), 'brain');
+  lab('Temporalis', V3(1.0, 0.4, -0.2), 'muscles'); lab('Masseter', V3(-0.82, -0.62, -0.1), 'muscles'); lab('Orbicularis oris', lc, 'muscles');
+  lab('Eyeball', eyes[0].ball.position, 'eyes');
+  const c = V3(0, 0.1, 0).applyMatrix4(head.matrix);
+  return { center: c, r: half * k * 2.25 };
+}
+function headFromPose(pl) {
+  const P = i => V3((1 - pl[i].x) * W, -pl[i].y * H, -pl[i].z * W), vis = i => pl[i].v > 0.5;
+  if (!vis(7) || !vis(8) || !vis(2) || !vis(5)) return null;
+  const a = P(8), b = P(7), O = mid3(a, b), half = a.distanceTo(b) / 2 * 0.92;
+  if (half < 6) return null;
+  const up = mid3(P(2), P(5)).sub(mid3(P(9), P(10)));
+  const k = S.size;
+  frameMatrix(O, b.clone().sub(a), up, half * k * S.width, half * k * S.height, half * k * S.depth, head.matrix);
+  head.matrixWorldNeedsUpdate = true;
+  jawPivot.rotation.x = 0;
+  eyes.forEach(e => { e.ball.position.set(e.s * 0.4, 0.05, 0.42); e.iris.position.set(e.s * 0.4, 0.05, 0.61); });
+  orbits.forEach(o => { o.rim.position.set(o.s * 0.4, 0.07, 0.54); o.hole.position.set(o.s * 0.4, 0.07, 0.52); });
+  upperTeeth.position.set(0, -0.78, 0.55); lowerTeeth.position.set(-TMJ.x, -0.78 - TMJ.y, 0.55 - TMJ.z); nasalHole.position.set(0, -0.35, 0.78);
+  LABELS.push({ t: 'Skull', p: V3(0, 1.2, 0.3).applyMatrix4(head.matrix), layer: 'skull' });
+  LABELS.push({ t: 'Brain', p: V3(0.3, 0.8, 0).applyMatrix4(head.matrix), layer: 'brain' });
+  return { center: O, r: half * 2.4 };
+}
+function updateHand(rig, lm, withLabels, skipForearm) {
+  const P = i => V3((1 - lm[i].x) * W, -lm[i].y * H, -lm[i].z * W);
+  const p = lm.map((_, i) => P(i));
+  const S0 = p[0].distanceTo(p[9]); if (S0 < 12) return false;
+  HAND_BONES.forEach(([a, b], k) => {
+    const isTip = b % 4 === 0 && b > 0, w = S0 * (a === 0 ? 0.17 : isTip ? 0.1 : (b % 4 === 3 ? 0.12 : 0.14));
+    setSeg(rig.phal[k], lerp3(p[a], p[b], a === 0 ? 0.55 : 0.06), lerp3(p[a], p[b], isTip ? 0.86 : 0.94), w);
+  });
+  const bases = [5, 9, 13, 17].map(i => lerp3(p[0], p[i], 0.36));
+  [5, 9, 13, 17].forEach((m, k) => setSeg(rig.meta[k], bases[k], lerp3(bases[k], p[m], 0.95), S0 * 0.16));
+  const carp = [...bases.map(b => lerp3(p[0], b, 0.3)), ...bases.map(b => lerp3(p[0], b, 0.72))];
+  carp.forEach((c, k) => setBall(rig.carp[k], c, S0 * 0.07));
+  const f = p[0].clone().sub(p[9]).normalize(), n = new THREE.Vector3().crossVectors(f, V3(0, 0, 1)).normalize();
+  const far = q => q.clone().add(f.clone().multiplyScalar(S0 * 1.7));
+  if (skipForearm) rig.fore.forEach(g => g.userData.active = false);
+  else {
+    const r0 = p[0].clone().add(n.clone().multiplyScalar(S0 * 0.12)), u0 = p[0].clone().add(n.clone().multiplyScalar(-S0 * 0.12));
+    setSeg(rig.fore[0], r0, far(r0), S0 * 0.2); setSeg(rig.fore[1], u0, far(u0), S0 * 0.17);
+  }
+  if (withLabels) {
+    const lab = (t, q) => LABELS.push({ t, p: q, layer: 'hands' });
+    lab('Distal phalanx', lerp3(p[7], p[8], 0.5)); lab('Middle phalanx', lerp3(p[6], p[7], 0.5)); lab('Proximal phalanx', lerp3(p[5], p[6], 0.5));
+    lab('Metacarpal', lerp3(bases[1], p[9], 0.5)); lab('Carpal bones', carp[5]);
+  }
+  return true;
+}
+function updateBody(pl, handWrists) {
+  const P = i => V3((1 - pl[i].x) * W, -pl[i].y * H, -pl[i].z * W), vis = i => pl[i].v > 0.5;
+  if (!vis(11) || !vis(12)) return null;
+  const sL = P(11), sR = P(12), u = sL.distanceTo(sR) / 2;
+  if (u < 12) return null;
+  const mS = mid3(sL, sR);
+  const hipsOK = vis(23) && vis(24);
+  let mH, up;
+  if (hipsOK) { mH = mid3(P(23), P(24)); up = mS.clone().sub(mH); }
+  else { up = V3(0, 1, 0); mH = mS.clone().add(V3(0, -u * TL0, 0)); }
+  const TL = Math.max(1.8, Math.min(3.8, up.length() / u || TL0));
+  frameMatrix(mS, sL.clone().sub(sR), up, u, u * TL / TL0, u, torso.matrix);
+  torso.matrixWorldNeedsUpdate = true;
+  // pelvis at hip level, width from real hip distance
+  const hw = hipsOK ? P(23).distanceTo(P(24)) / 2 / u : 0.62;
+  pelvis.position.set(0, -TL0 + 0.05, 0); pelvis.scale.set(hw / 0.62, 1, 1);
+  // pooled limb bones
+  const all = [].concat(...Object.values(BODY).map(v => v.flat ? v.flat() : v));
+  all.forEach(g => g.userData.active = false);
+  const camZ = V3(0, 0, 1);
+  const perp = (a, b) => new THREE.Vector3().crossVectors(b.clone().sub(a), camZ).normalize();
+  const lab = (t, q, layer = 'skeleton') => LABELS.push({ t, p: q, layer });
+  [[11, 13, 15, 0], [12, 14, 16, 1]].forEach(([s, e, w, k]) => {
+    if (!vis(e)) return;
+    const Sx = P(s), E = P(e), J = lerp3(Sx, mS, 0.05);
+    setBall(BODY.shJ[k], J, u * 0.12); setSeg(BODY.hum[k], J, E, u * 0.2);
+    if (k) lab('Humerus', lerp3(J, E, 0.5));
+    if (!vis(w)) return;
+    const Wr = P(w), n = perp(E, Wr).multiplyScalar(u * 0.05);
+    const tracked = handWrists.some(h => h.distanceTo(Wr) < u * 0.6);
+    setSeg(BODY.rad[k], E.clone().add(n.clone().multiplyScalar(0.5)), Wr.clone().add(n), u * 0.11);
+    setSeg(BODY.uln[k], E.clone().sub(n.clone().multiplyScalar(0.6)), Wr.clone().sub(n), u * 0.12);
+    if (!k) { lab('Radius', lerp3(E, Wr, 0.6).add(n)); lab('Ulna', lerp3(E, Wr, 0.4).sub(n)); }
+    if (!tracked && S.layers.hands) {   // simple hand from pose (pinky 17/18, index 19/20, thumb 21/22)
+      const ix = P(k ? 20 : 19), pk = P(k ? 18 : 17), th = P(k ? 22 : 21);
+      if (vis(k ? 20 : 19) && vis(k ? 18 : 17)) {
+        for (let f = 0; f < 4; f++) { const tip = lerp3(ix, pk, f / 3); setSeg(BODY.handSimple[k][f], lerp3(Wr, tip, 0.15), tip.clone().add(tip.clone().sub(Wr).multiplyScalar(0.45)), u * 0.05); }
+        setSeg(BODY.handSimple[k][4], lerp3(Wr, th, 0.2), th, u * 0.055);
+      }
+    }
+  });
+  if (hipsOK) [[23, 25, 27, 29, 31, 0], [24, 26, 28, 30, 32, 1]].forEach(([h, kn, an, he, to, k]) => {
+    if (!vis(kn)) return;
+    const Hp = P(h), K = P(kn), headF = lerp3(Hp, mH, 0.18), troch = Hp.clone().add(Hp.clone().sub(mH).multiplyScalar(0.18));
+    setBall(BODY.hipJ[k], headF, u * 0.11); setSeg(BODY.neck[k], headF, troch, u * 0.13);
+    setSeg(BODY.fem[k], troch, K, u * 0.24);
+    const fwd = V3(0, 0, 1).applyMatrix3(new THREE.Matrix3().setFromMatrix4(torso.matrix)).normalize();
+    setBall(BODY.pat[k], K.clone().add(fwd.multiplyScalar(u * 0.1)), u * 0.09);
+    if (!k) lab('Femur', lerp3(troch, K, 0.5)); else lab('Patella', K);
+    if (!vis(an)) return;
+    const An = P(an), n = perp(K, An).multiplyScalar(u * 0.09 * (k ? 1 : -1));
+    setSeg(BODY.tib[k], K, An, u * 0.19);
+    setSeg(BODY.fib[k], K.clone().add(n).add(An.clone().sub(K).multiplyScalar(0.06)), An.clone().add(n.clone().multiplyScalar(0.7)), u * 0.08);
+    if (!k) lab('Tibia', lerp3(K, An, 0.45)); else lab('Fibula', lerp3(K, An, 0.5).add(n));
+    setBall(BODY.talus[k], An, u * 0.08);
+    if (vis(he)) setSeg(BODY.calc[k], An, P(he), u * 0.14);
+    if (vis(to)) { const T = P(to), nf = perp(An, T).multiplyScalar(u * 0.06); [-1, 0, 1].forEach((o, m) => setSeg(BODY.meta[k][m], lerp3(An, T, 0.25).add(nf.clone().multiplyScalar(o)), T.clone().add(nf.clone().multiplyScalar(o * 1.4)), u * 0.06)); if (!k) lab('Metatarsals', lerp3(An, T, 0.6)); }
+  });
+  // torso labels
+  const tl = (t, p, layer = 'skeleton') => lab(t, p.clone().applyMatrix4(torso.matrix), layer);
+  tl('Clavicle', V3(0.5, 0.02, 0.3)); tl('Sternum', V3(0, -0.7, 0.45)); tl('Ribs', V3(-0.85, -0.7, 0.1));
+  tl('Cervical vertebrae', V3(0, 0.45, -0.35)); tl('Thoracic vertebrae', V3(0, -1.2, -0.42)); tl('Lumbar vertebrae', V3(0, -2.0, -0.35));
+  tl('Scapula', V3(-0.6, -0.3, -0.6)); tl('Pelvis (ilium)', V3(-0.55 * hw / 0.62, -TL0 + 0.32, -0.1));
+  tl('Heart', V3(0.15, -0.82, 0.3), 'organs'); tl('Lungs', V3(-0.5, -0.5, 0.2), 'organs'); tl('Liver', V3(-0.45, -1.4, 0.3), 'organs');
+  tl('Stomach', V3(0.4, -1.45, 0.3), 'organs'); tl('Small intestine', V3(-0.1, -2.1, 0.3), 'organs'); tl('Large intestine', V3(0.45, -2.0, 0.2), 'organs');
+  tl('Kidney', V3(-0.32, -1.72, -0.25), 'organs'); tl('Aorta', V3(0.18, -0.4, 0.05), 'organs');
+  return { cx: mS.x, u };
+}
+
+/* ======================= 2D layers: dim/silhouette + labels ======================= */
+const maskDark = document.createElement('canvas'), maskGlow = document.createElement('canvas');
+let maskImgD = null, maskImgG = null, maskOK = false;
+function updateMask(m) {
+  const w = m.width, h = m.height, f = m.getAsFloat32Array();
+  if (maskDark.width !== w || maskDark.height !== h || !maskImgD) {
+    for (const c of [maskDark, maskGlow]) { c.width = w; c.height = h; }
+    maskImgD = maskDark.getContext('2d').createImageData(w, h); maskImgG = maskGlow.getContext('2d').createImageData(w, h);
+  }
+  const d = maskImgD.data, g = maskImgG.data;
+  for (let i = 0, j = 0; i < f.length; i++, j += 4) { const a = f[i] * 255; d[j] = 3; d[j + 1] = 10; d[j + 2] = 30; d[j + 3] = a * 0.6; g[j] = 60; g[j + 1] = 130; g[j + 2] = 255; g[j + 3] = a; }
+  maskDark.getContext('2d').putImageData(maskImgD, 0, 0); maskGlow.getContext('2d').putImageData(maskImgG, 0, 0);
+}
+function drawDim(headInfo) {
+  dctx.setTransform(1, 0, 0, 1, 0, 0); dctx.clearRect(0, 0, W, H);
+  const vg = dctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.55)');
+  dctx.fillStyle = vg; dctx.fillRect(0, 0, W, H);
+  if (S.layers.body && maskOK && maskDark.width) {
+    dctx.save(); dctx.setTransform(-W / maskDark.width, 0, 0, H / maskDark.height, W, 0);
+    dctx.filter = 'blur(4px)'; dctx.drawImage(maskGlow, 0, 0); dctx.filter = 'blur(1px)'; dctx.drawImage(maskDark, 0, 0);
+    dctx.restore(); dctx.filter = 'none';
+  }
+  if (headInfo) {
+    const c = headInfo.center, x = c.x, y = -c.y, r = headInfo.r * 0.5;
+    const g = dctx.createRadialGradient(x, y, r * 0.3, x, y, r * 1.15);
+    g.addColorStop(0, 'rgba(2,8,26,0.72)'); g.addColorStop(0.75, 'rgba(2,8,26,0.5)'); g.addColorStop(1, 'rgba(2,8,26,0)');
+    dctx.fillStyle = g; dctx.beginPath(); dctx.ellipse(x, y, r * 1.0, r * 1.25, 0, 0, TAU); dctx.fill();
+  }
+}
+function placeColumn(items, x, align, fs) {
+  if (!items.length) return;
+  items.sort((a, b) => a.sy - b.sy);
+  const gap = fs * 1.45; let y = -Infinity;
+  for (const it of items) { it.y = Math.max(it.sy, y + gap, fs); y = it.y; }
+  for (let i = items.length - 1; i >= 0; i--) items[i].y = Math.min(items[i].y, H - fs - (items.length - 1 - i) * gap);
+  for (const it of items) {
+    const tw = lctx.measureText(it.t).width, ls = align === 'right' ? x + 4 : x - 4, te = align === 'right' ? x - tw : x + tw;
+    lctx.beginPath(); lctx.moveTo(it.sx, it.sy); lctx.lineTo(ls, it.y); lctx.lineTo(te, it.y);
+    lctx.strokeStyle = 'rgba(230,238,255,0.55)'; lctx.lineWidth = 0.8; lctx.stroke();
+    lctx.beginPath(); lctx.arc(it.sx, it.sy, 2, 0, TAU); lctx.fillStyle = 'rgba(255,255,255,0.9)'; lctx.fill();
+    lctx.textAlign = align; lctx.textBaseline = 'bottom'; lctx.fillStyle = 'rgba(235,242,255,0.95)'; lctx.fillText(it.t, x, it.y - 2);
+  }
+}
+function drawLabels(headInfo, bodyInfo) {
+  lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.clearRect(0, 0, W, H);
+  if (headInfo && !bodyInfo) {
+    lctx.beginPath(); lctx.arc(headInfo.center.x, -headInfo.center.y, headInfo.r, 0, TAU);
+    lctx.strokeStyle = 'rgba(255,255,255,0.2)'; lctx.lineWidth = 1; lctx.stroke();
+  }
+  if (!S.labels) return;
+  const items = LABELS.filter(l => S.layers[l.layer] && isFinite(l.p.x) && isFinite(l.p.y)).map(l => ({ t: l.t, sx: l.p.x, sy: -l.p.y }));
+  if (!items.length) return;
+  const fs = Math.max(10, Math.round(H / 64));
+  lctx.font = `500 ${fs}px "Segoe UI", system-ui, sans-serif`;
+  lctx.shadowColor = 'rgba(0,0,0,0.9)'; lctx.shadowBlur = 4;
+  const maxW = Math.max(60, ...items.map(i => lctx.measureText(i.t).width));
+  let minX = Math.min(...items.map(i => i.sx)), maxX = Math.max(...items.map(i => i.sx));
+  if (headInfo) { minX = Math.min(minX, headInfo.center.x - headInfo.r); maxX = Math.max(maxX, headInfo.center.x + headInfo.r); }
+  const cx = bodyInfo ? bodyInfo.cx : headInfo ? headInfo.center.x : (minX + maxX) / 2;
+  const lx = Math.max(maxW + 8, minX - 14), rx = Math.min(W - maxW - 8, maxX + 14);
+  placeColumn(items.filter(i => i.sx < cx), lx, 'right', fs);
+  placeColumn(items.filter(i => i.sx >= cx), rx, 'left', fs);
+  lctx.shadowBlur = 0;
+}
+const POSE_LINKS = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,29],[29,31],[27,31],[28,30],[30,32],[28,32]];
+function drawTracking(face, handList, pose, fps, headInfo) {
+  const X = q => (1 - q.x) * W, Y = q => q.y * H;
+  if (face) { lctx.fillStyle = 'rgba(0,255,200,0.7)'; for (const q of face) lctx.fillRect(X(q) - 1, Y(q) - 1, 2, 2); }
+  for (const h of handList) { lctx.strokeStyle = '#ffdc00'; lctx.lineWidth = 1.5; lctx.beginPath(); for (const [a, b] of HAND_LINKS) { lctx.moveTo(X(h[a]), Y(h[a])); lctx.lineTo(X(h[b]), Y(h[b])); } lctx.stroke(); }
+  if (pose) { lctx.strokeStyle = 'rgba(255,90,255,0.85)'; lctx.lineWidth = 2; lctx.beginPath(); for (const [a, b] of POSE_LINKS) if (pose[a].v > 0.5 && pose[b].v > 0.5) { lctx.moveTo(X(pose[a]), Y(pose[a])); lctx.lineTo(X(pose[b]), Y(pose[b])); } lctx.stroke(); }
+  const e = new THREE.Euler().setFromRotationMatrix(new THREE.Matrix4().extractRotation(head.matrix));
+  const lines = [`FPS ${fps.toFixed(0)}`, `Face: ${face ? 'yes' : 'no'}  Hands: ${handList.length}  Body: ${pose ? 'yes' : 'no'}`,
+    headInfo ? `Head yaw ${(e.y * 180 / Math.PI).toFixed(0)}° pitch ${(e.x * 180 / Math.PI).toFixed(0)}° roll ${(e.z * 180 / Math.PI).toFixed(0)}°` : 'Head: -',
+    `Jaw ${(jawPivot.rotation.x * 180 / Math.PI).toFixed(0)}°  three.js: ${window.__THREE_SRC}`];
+  const fs = Math.max(11, Math.round(H / 55)); lctx.font = `${fs}px ui-monospace, Consolas, monospace`;
+  const bw = fs * 22; lctx.fillStyle = 'rgba(0,0,0,0.6)'; lctx.fillRect(W - bw - 10, 10, bw, lines.length * fs * 1.4 + 10);
+  lctx.fillStyle = '#9fffd9'; lctx.textAlign = 'left'; lctx.textBaseline = 'top';
+  lines.forEach((t, i) => lctx.fillText(t, W - bw, 15 + i * fs * 1.4));
+}
+
+/* ======================= MediaPipe ======================= */
+const MP_VER = '0.10.14', CDN = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
+const URLS = {
+  face: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+  hand: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+  pose: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task'
+};
+async function exists(url) { try { return (await fetch(url, { method: 'HEAD' })).ok; } catch { return false; } }
+const abs = u => new URL(u, location.href).href;
+let faceLm = null, handLm = null, poseLm = null;
+async function loadModels() {
+  const local = await exists('./vendor/tasks-vision/vision_bundle.mjs');
+  const mod = await import(local ? abs('./vendor/tasks-vision/vision_bundle.mjs') : `${CDN}/vision_bundle.mjs`);
+  const fileset = await mod.FilesetResolver.forVisionTasks(local ? abs('./vendor/tasks-vision/wasm') : `${CDN}/wasm`);
+  const pick = async (file, url) => (await exists('./models/' + file)) ? abs('./models/' + file) : url;
+  const make = async (cls, path, extra) => {
+    for (const delegate of ['GPU', 'CPU']) {
+      try { return await cls.createFromOptions(fileset, { baseOptions: { modelAssetPath: path, delegate }, runningMode: 'VIDEO', ...extra }); }
+      catch (e) { if (delegate === 'CPU') throw e; }
+    }
+  };
+  faceLm = await make(mod.FaceLandmarker, await pick('face_landmarker.task', URLS.face), { numFaces: 1 });
+  handLm = await make(mod.HandLandmarker, await pick('hand_landmarker.task', URLS.hand), { numHands: 2 });
+  poseLm = await make(mod.PoseLandmarker, await pick('pose_landmarker_full.task', URLS.pose), { numPoses: 1, outputSegmentationMasks: true });
+  statusEl.textContent = `Tracking ready · MediaPipe ${local ? 'local' : 'CDN'} · three.js ${window.__THREE_SRC}`;
+}
+
+/* ======================= main loop ======================= */
+let face = null, faceSeen = 0, hands = {}, pose = null, poseSeen = 0, lastT = -1, fps = 0, lastFrame = performance.now();
+const poseIn = document.createElement('canvas'), poseCtx = poseIn.getContext('2d');
+function detect(now) {
+  if (poseIn.width !== 512) { poseIn.width = 512; poseIn.height = Math.round(512 * H / W); }
+  poseCtx.drawImage(video, 0, 0, poseIn.width, poseIn.height);
+  const pr = poseLm.detectForVideo(poseIn, now);
+  if (pr.landmarks && pr.landmarks.length) { pose = smooth(pose, pr.landmarks[0], 0.5); poseSeen = now; } else if (now - poseSeen > 400) pose = null;
+  if (pr.segmentationMasks && pr.segmentationMasks.length) { try { updateMask(pr.segmentationMasks[0]); maskOK = !!pose; } finally { pr.segmentationMasks.forEach(m => m.close && m.close()); } } else maskOK = false;
+  const fr = faceLm.detectForVideo(video, now);
+  if (fr.faceLandmarks && fr.faceLandmarks.length) { face = smooth(face, fr.faceLandmarks[0], 0.45); faceSeen = now; } else if (now - faceSeen > 350) face = null;
+  const hr = handLm.detectForVideo(video, now), next = {};
+  (hr.landmarks || []).forEach((h, i) => { const k = (hr.handednesses?.[i]?.[0]?.categoryName || 'h') + i; next[k] = smooth(hands[k], h, 0.55); });
+  hands = next;
+}
+function frame() {
+  requestAnimationFrame(frame);
+  if (video.readyState < 2) return;
+  const now = performance.now();
+  if (video.currentTime !== lastT) {
+    lastT = video.currentTime;
+    try { detect(now); } catch (e) { console.warn(e); }
+    fps = fps * 0.9 + (1000 / Math.max(1, now - lastFrame)) * 0.1; lastFrame = now;
+  }
+  update(); 
+}
+function update() {
+  LABELS.length = 0;
+  PARTS.forEach(p => { if (p.matrixAutoUpdate === false) p.userData.active = false; });
+  const handList = Object.values(hands);
+  const handWrists = handList.map(h => V3((1 - h[0].x) * W, -h[0].y * H, -h[0].z * W));
+  const bodyInfo = pose ? updateBody(pose, handWrists) : null;
+  let headInfo = face ? updateHead(face) : null;
+  if (!headInfo && pose) headInfo = headFromPose(pose);
+  let handsOn = 0;
+  handRigs.forEach((rig, i) => { rig.g.visible = false; if (handList[i] && S.layers.hands) { rig.g.visible = updateHand(rig, handList[i], i === 0, !!bodyInfo && S.layers.skeleton); handsOn++; } });
+  head.visible = !!headInfo;
+  torso.visible = !!bodyInfo; LIMBS.visible = !!bodyInfo;
+  // layer visibility + pooled activity
+  for (const p of PARTS) p.visible = S.layers[p.userData.layer] !== false && (p.matrixAutoUpdate !== false || p.userData.active);
+  renderer.render(scene, camera);
+  drawDim(headInfo);
+  drawLabels(headInfo, bodyInfo);
+  if (S.tracking) drawTracking(face, handList, pose, fps, headInfo);
+}
+
+/* ======================= start ======================= */
+applyStyle();
+$('#startBtn').addEventListener('click', async () => {
+  const btn = $('#startBtn'), err = $('#err'); btn.disabled = true; err.textContent = '';
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera API not available. Open via http://localhost (not file://).');
+    statusEl.textContent = 'Starting camera…';
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, audio: false });
+    video.srcObject = stream; await video.play();
+    resizeAll(video.videoWidth || 1280, video.videoHeight || 720);
+    $('#stage').style.aspectRatio = `${W} / ${H}`;
+    statusEl.textContent = 'Loading tracking models…';
+    await Promise.all([loadModels(), tryLoadModels()]);
+    $('#overlay').style.display = 'none';
+    requestAnimationFrame(frame);
+  } catch (e) { console.error(e); err.textContent = e.message || String(e); btn.disabled = false; statusEl.textContent = 'Error'; }
+});
+resizeAll(W, H);
+window.__XR = { update, setFace: f => face = f, setHands: h => hands = h, setPose: p => pose = p, S, applyStyle, PARTS };
+</script>
+</body>
+</html>
